@@ -61,7 +61,10 @@ export const authRoutes = new Elysia({
         throw new Error("Invalid credentials");
       }
 
-      const validPassword = await bcrypt.compare(body.password, user.passwordHash);
+      const validPassword = await bcrypt.compare(
+        body.password,
+        user.passwordHash,
+      );
 
       if (!validPassword) {
         throw new Error("Invalid credentials");
