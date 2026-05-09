@@ -1,4 +1,4 @@
-@baseUrl = http://localhost:3000/api
+@baseUrl = http://localhost:6060/api
 @authToken = {{login.response.body.token}}
 @userId = {{login.response.body.id}}
 
@@ -22,40 +22,227 @@ Content-Type: application/json
   "password": "password123"
 }
 
-### 3. Get All Products
+### ============================================
+### PRODUCTS & CATEGORIES
+### ============================================
+
+### Get All Categories
+GET {{baseUrl}}/categories
+Authorization: Bearer {{authToken}}
+
+### Create a Category
+# @name createCategory
+POST {{baseUrl}}/categories
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "name": "Beverages",
+  "slug": "beverages",
+  "description": "Hot and cold drinks",
+  "sortOrder": 1
+}
+
+@categoryId = {{createCategory.response.body.id}}
+
+### Get All Products
 GET {{baseUrl}}/products
 Authorization: Bearer {{authToken}}
 
-### 4. Create a Product
+### Create a Product
+# @name createProduct
 POST {{baseUrl}}/products
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "sku": "COF-001",
+  "barcode": "123456789",
   "name": "Espresso",
-  "price": 3.5,
-  "stock": 100,
-  "image": "https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=500&auto=format&fit=crop"
+  "description": "Strong black coffee",
+  "brand": "Premium Roast",
+  "costPrice": 1.5,
+  "sellingPrice": 3.5,
+  "stockQuantity": 100,
+  "categoryId": "{{categoryId}}"
 }
 
-### 5. Create an Order
-# Note: replace the "id" below with a real product cuid from step 3
+@productId = {{createProduct.response.body.id}}
+
+### ============================================
+### CUSTOMERS
+### ============================================
+
+### Get All Customers
+GET {{baseUrl}}/customers
+Authorization: Bearer {{authToken}}
+
+### Create a Customer
+# @name createCustomer
+POST {{baseUrl}}/customers
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "code": "CUST-001",
+  "name": "John Doe",
+  "phone": "09123456789",
+  "email": "john@example.com",
+  "address": "123 Street, Yangon",
+  "tier": "GOLD"
+}
+
+@customerId = {{createCustomer.response.body.id}}
+
+### ============================================
+### ORDERS & PAYMENTS
+### ============================================
+
+### Create an Order
+# @name createOrder
 POST {{baseUrl}}/orders
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
-  "total": 7.0,
+  "subTotal": 7.0,
+  "taxAmount": 0.5,
+  "discountAmount": 0,
+  "grandTotal": 7.5,
+  "paymentMethod": "CASH",
+  "paidAmount": 10.0,
+  "changeAmount": 2.5,
+  "paymentStatus": "PAID",
   "userId": "{{userId}}",
+  "customerId": "{{customerId}}",
   "items": [
     {
-      "id": "cm0abc123def456", 
-      "qty": 2,
-      "price": 3.5
+      "productId": "{{productId}}",
+      "quantity": 2,
+      "unitPrice": 3.5,
+      "subTotal": 7.0
     }
   ]
 }
 
-### 6. Get All Orders
+@orderId = {{createOrder.response.body.id}}
+
+### Get All Orders
 GET {{baseUrl}}/orders
+Authorization: Bearer {{authToken}}
+
+### Get Order Details
+GET {{baseUrl}}/orders/{{orderId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### RETURNS
+### ============================================
+
+### Create a Return
+POST {{baseUrl}}/returns
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "orderId": "{{orderId}}",
+  "customerId": "{{customerId}}",
+  "totalAmount": 3.5,
+  "refundMethod": "CASH",
+  "reason": "Wrong item delivered",
+  "approvedBy": "{{userId}}",
+  "items": [
+    {
+      "orderItemId": "{{createOrder.response.body.items[0].id}}",
+      "quantity": 1,
+      "refundAmount": 3.5,
+      "reason": "Damaged"
+    }
+  ]
+}
+
+### ============================================
+### INVENTORY MANAGEMENT
+### ============================================
+
+### Get Stock Movements
+GET {{baseUrl}}/inventory/movements
+Authorization: Bearer {{authToken}}
+
+### Create Inventory Count
+POST {{baseUrl}}/inventory/counts
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "scheduledDate": "2026-12-31T00:00:00Z",
+  "userId": "{{userId}}",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "systemQuantity": 100,
+      "countedQuantity": 98,
+      "reason": "Shrinkage"
+    }
+  ]
+}
+
+### ============================================
+### SESSIONS
+### ============================================
+
+### Open Cashier Session
+# @name openSession
+POST {{baseUrl}}/sessions/open
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "userId": "{{userId}}",
+  "openingBalance": 500
+}
+
+@sessionId = {{openSession.response.body.id}}
+
+### Get All Sessions
+GET {{baseUrl}}/sessions
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### STAFF MANAGEMENT
+### ============================================
+
+### Get All Staff
+GET {{baseUrl}}/staff
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### PROMOTIONS
+### ============================================
+
+### Create a Promotion
+POST {{baseUrl}}/promotions
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "code": "SUMMER2026",
+  "name": "Summer Sale",
+  "discountType": "PERCENTAGE",
+  "discountValue": 10,
+  "startDate": "2026-06-01T00:00:00Z",
+  "endDate": "2026-08-31T00:00:00Z",
+  "productIds": ["{{productId}}"]
+}
+
+### ============================================
+### SYSTEM
+### ============================================
+
+### Get Audit Logs
+GET {{baseUrl}}/audit-logs
+Authorization: Bearer {{authToken}}
+
+### Get Notifications
+GET {{baseUrl}}/notifications?userId={{userId}}
 Authorization: Bearer {{authToken}}
