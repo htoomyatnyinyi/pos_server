@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pos_database
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: posdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - mynetwork
+
+  app:
+    build: .
+    container_name: pos_server
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes: #may be cna delete this
+      - .:/app
+      - /app/node_modules
+    environment:
+      DATABASE_URL: "postgresql://postgres:password@db:5432/posdb"
+      JWT_SECRET: "supersecret"
+    depends_on:
+      - db
+    networks:
+      - mynetwork
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: pos_tunnel
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    #  tunnel --no-autoupdate run --token
+    networks:
+      - mynetwork
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+
+networks:
+  mynetwork:

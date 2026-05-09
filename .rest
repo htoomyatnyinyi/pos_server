@@ -1,0 +1,61 @@
+@baseUrl = http://localhost:3000/api
+@authToken = {{login.response.body.token}}
+@userId = {{login.response.body.id}}
+
+### 1. Register a New User
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "HTOO MYAT",
+  "email": "htomyat@gmail.com",
+  "password": "password123"
+}
+
+### 2. Login
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "htomyat@gmail.com",
+  "password": "password123"
+}
+
+### 3. Get All Products
+GET {{baseUrl}}/products
+Authorization: Bearer {{authToken}}
+
+### 4. Create a Product
+POST {{baseUrl}}/products
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "name": "Espresso",
+  "price": 3.5,
+  "stock": 100,
+  "image": "https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=500&auto=format&fit=crop"
+}
+
+### 5. Create an Order
+# Note: replace the "id" below with a real product cuid from step 3
+POST {{baseUrl}}/orders
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "total": 7.0,
+  "userId": "{{userId}}",
+  "items": [
+    {
+      "id": "cm0abc123def456", 
+      "qty": 2,
+      "price": 3.5
+    }
+  ]
+}
+
+### 6. Get All Orders
+GET {{baseUrl}}/orders
+Authorization: Bearer {{authToken}}
