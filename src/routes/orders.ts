@@ -7,44 +7,74 @@ export const orderRoutes = new Elysia({
   .get("/", async () => {
     return prisma.order.findMany({
       include: {
-        items: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        customer: true,
       },
       orderBy: {
         createdAt: "desc",
       },
     });
   })
+  .get("/:id", async ({ params }) => {
+    const order = await prisma.order.findUnique({
+      where: { id: params.id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        user: true,
+        customer: true,
+      },
+    });
+    if (!order) throw new Error("Order not found");
+    return order;
+  })
   .post(
     "/",
     async ({ body, set }) => {
-      // In a real app, userId would come from the JWT token
-      // For now, we'll require it in the body or use a dummy one if needed
       if (!body.userId) {
         set.status = 400;
         return { error: "userId is required" };
       }
 
-      // Fetch products to get names for the snapshot
-      const productIds = body.items.map((i: any) => i.id);
-      const products = await prisma.product.findMany({
-        where: { id: { in: productIds } },
-      });
+      // Generate order number (simple version)
+      const orderNumber = `ORD-${Date.now()}`;
 
       const order = await prisma.order.create({
         data: {
-          totalAmount: body.total,
+          orderNumber,
+          subTotal: body.subTotal,
+          taxAmount: body.taxAmount || 0,
+          discountAmount: body.discountAmount || 0,
+          grandTotal: body.grandTotal,
+          paymentMethod: body.paymentMethod,
+          paidAmount: body.paidAmount,
+          changeAmount: body.changeAmount,
+          paymentStatus: body.paymentStatus || "PAID",
+          status: "COMPLETED",
           userId: body.userId,
-          status: "PENDING",
+          customerId: body.customerId,
           items: {
-            create: body.items.map((item: any) => {
-              const product = products.find((p) => p.id === item.id);
-              return {
-                productId: item.id,
-                quantity: item.qty,
-                price: item.price,
-                productName: product?.name || "Unknown Product",
-              };
-            }),
+            create: body.items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discountAmount: item.discountAmount || 0,
+              subTotal: item.subTotal,
+            })),
           },
         },
         include: {
@@ -52,15 +82,13 @@ export const orderRoutes = new Elysia({
         },
       });
 
-      // decrease stock
+      // Decrease stock
       for (const item of body.items) {
         await prisma.product.update({
-          where: {
-            id: item.id,
-          },
+          where: { id: item.productId },
           data: {
-            stock: {
-              decrement: item.qty,
+            stockQuantity: {
+              decrement: item.quantity,
             },
           },
         });
@@ -70,15 +98,61 @@ export const orderRoutes = new Elysia({
     },
     {
       body: t.Object({
-        total: t.Number(),
-        userId: t.Optional(t.String()), // Temporary, should be from auth
+        subTotal: t.Number(),
+        taxAmount: t.Optional(t.Number()),
+        discountAmount: t.Optional(t.Number()),
+        grandTotal: t.Number(),
+        paymentMethod: t.Enum({
+          CASH: "CASH",
+          KBZ_PAY: "KBZ_PAY",
+          CB_PAY: "CB_PAY",
+          WAVE_PAY: "WAVE_PAY",
+          CARD: "CARD",
+          MIXED_PAYMENT: "MIXED_PAYMENT",
+        }),
+        paidAmount: t.Number(),
+        changeAmount: t.Number(),
+        paymentStatus: t.Optional(t.String()),
+        userId: t.String(),
+        customerId: t.Optional(t.String()),
         items: t.Array(
           t.Object({
-            id: t.String(),
-            qty: t.Number(),
-            price: t.Number(),
+            productId: t.String(),
+            quantity: t.Number(),
+            unitPrice: t.Number(),
+            discountAmount: t.Optional(t.Number()),
+            subTotal: t.Number(),
           }),
         ),
       }),
     },
-  );
+  )
+  .patch(
+    "/:id/status",
+    async ({ params, body }) => {
+      return prisma.order.update({
+        where: { id: params.id },
+        data: {
+          status: body.status,
+        },
+      });
+    },
+    {
+      body: t.Object({
+        status: t.Enum({
+          PENDING: "PENDING",
+          COMPLETED: "COMPLETED",
+          CANCELLED: "CANCELLED",
+          VOIDED: "VOIDED",
+          REFUNDED: "REFUNDED",
+          PARTIALLY_REFUNDED: "PARTIALLY_REFUNDED",
+          HOLD: "HOLD",
+        }),
+      }),
+    },
+  )
+  .delete("/:id", async ({ params }) => {
+    return prisma.order.delete({
+      where: { id: params.id },
+    });
+  });

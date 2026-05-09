@@ -12,30 +12,85 @@ export const productRoutes = new Elysia({
     });
   })
   .get("/:id", async ({ params }) => {
-    return prisma.product.findUnique({
+    const product = await prisma.product.findUnique({
       where: {
         id: params.id,
       },
     });
+    if (!product) throw new Error("Product not found");
+    return product;
   })
   .post(
     "/",
     async ({ body }) => {
       return prisma.product.create({
         data: {
+          sku: body.sku,
+          barcode: body.barcode,
           name: body.name,
-          price: body.price,
-          stock: body.stock,
-          imageUrl: body.image, // Map image to imageUrl
+          description: body.description,
+          brand: body.brand,
+          costPrice: body.costPrice,
+          sellingPrice: body.sellingPrice,
+          stockQuantity: body.stockQuantity,
+          categoryId: body.categoryId,
+          supplierId: body.supplierId,
         },
       });
     },
     {
       body: t.Object({
+        sku: t.String(),
+        barcode: t.Optional(t.String()),
         name: t.String(),
-        price: t.Number(),
-        stock: t.Number(),
-        image: t.Optional(t.String()),
+        description: t.Optional(t.String()),
+        brand: t.Optional(t.String()),
+        costPrice: t.Number(),
+        sellingPrice: t.Number(),
+        stockQuantity: t.Integer(),
+        categoryId: t.String(),
+        supplierId: t.Optional(t.String()),
       }),
     },
-  );
+  )
+  .put(
+    "/:id",
+    async ({ params, body }) => {
+      return prisma.product.update({
+        where: { id: params.id },
+        data: {
+          sku: body.sku,
+          barcode: body.barcode,
+          name: body.name,
+          description: body.description,
+          brand: body.brand,
+          costPrice: body.costPrice,
+          sellingPrice: body.sellingPrice,
+          stockQuantity: body.stockQuantity,
+          categoryId: body.categoryId,
+          supplierId: body.supplierId,
+        },
+      });
+    },
+    {
+      body: t.Partial(
+        t.Object({
+          sku: t.String(),
+          barcode: t.String(),
+          name: t.String(),
+          description: t.String(),
+          brand: t.String(),
+          costPrice: t.Number(),
+          sellingPrice: t.Number(),
+          stockQuantity: t.Integer(),
+          categoryId: t.String(),
+          supplierId: t.String(),
+        }),
+      ),
+    },
+  )
+  .delete("/:id", async ({ params }) => {
+    return prisma.product.delete({
+      where: { id: params.id },
+    });
+  });

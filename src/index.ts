@@ -4,8 +4,12 @@ import { jwt } from "@elysiajs/jwt";
 import { authRoutes } from "./routes/auth";
 import { productRoutes } from "./routes/products";
 import { orderRoutes } from "./routes/orders";
-import { cartRoutes } from "./routes/cart";
-import { addressRoutes } from "./routes/addresses";
+import { storeRoutes } from "./routes/stores";
+import { categoryRoutes } from "./routes/categories";
+import { supplierRoutes } from "./routes/suppliers";
+import { customerRoutes } from "./routes/customers";
+import { sessionRoutes } from "./routes/sessions";
+import { inventoryRoutes } from "./routes/inventory";
 import { swagger } from "@elysiajs/swagger";
 
 const app = new Elysia()
@@ -31,8 +35,12 @@ const app = new Elysia()
       .use(authRoutes)
       .use(productRoutes)
       .use(orderRoutes)
-      .use(cartRoutes)
-      .use(addressRoutes),
+      .use(storeRoutes)
+      .use(categoryRoutes)
+      .use(supplierRoutes)
+      .use(customerRoutes)
+      .use(sessionRoutes)
+      .use(inventoryRoutes),
   )
   .listen(3000);
 

@@ -22,10 +22,10 @@ export const authRoutes = new Elysia({
 
       const user = await prisma.user.create({
         data: {
-          username: body.email, // Use email as username for now
+          username: body.email,
           email: body.email,
-          password: hashedPassword,
-          firstName: body.name, // Map name to firstName
+          passwordHash: hashedPassword,
+          name: body.name,
         },
       });
 
@@ -35,7 +35,7 @@ export const authRoutes = new Elysia({
 
       return {
         id: user.id,
-        name: user.firstName,
+        name: user.name,
         email: user.email,
         token,
       };
@@ -61,11 +61,7 @@ export const authRoutes = new Elysia({
         throw new Error("Invalid credentials");
       }
 
-      if (!user.password) {
-        throw new Error("Invalid credentials");
-      }
-
-      const validPassword = await bcrypt.compare(body.password, user.password);
+      const validPassword = await bcrypt.compare(body.password, user.passwordHash);
 
       if (!validPassword) {
         throw new Error("Invalid credentials");
@@ -77,7 +73,7 @@ export const authRoutes = new Elysia({
 
       return {
         id: user.id,
-        name: user.firstName,
+        name: user.name,
         email: user.email,
         token,
       };
