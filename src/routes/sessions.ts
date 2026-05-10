@@ -29,9 +29,10 @@ export const sessionRoutes = new Elysia({
   })
   .post(
     "/open",
-    async ({ body }) => {
+    async ({ body, set }) => {
       // Close any existing open sessions for this user first?
       // For now, just create a new one.
+      set.status = 201;
       return prisma.session.create({
         data: {
           userId: body.userId,
@@ -49,7 +50,8 @@ export const sessionRoutes = new Elysia({
   )
   .post(
     "/:id/close",
-    async ({ params, body }) => {
+    async ({ params, body, set }) => {
+      set.status = 201;
       return prisma.session.update({
         where: { id: params.id },
         data: {

@@ -1,9 +1,16 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { jwt } from "@elysiajs/jwt";
 
 export const categoryRoutes = new Elysia({
   prefix: "/categories",
 })
+  .use(
+    jwt({
+      name: "jwt",
+      secret: process.env.JWT_SECRET!,
+    })
+  )
   .get("/", async () => {
     return prisma.category.findMany({
       include: {
@@ -15,7 +22,7 @@ export const categoryRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const category = await prisma.category.findUnique({
       where: { id: params.id },
       include: {
@@ -24,12 +31,12 @@ export const categoryRoutes = new Elysia({
         products: true,
       },
     });
-    if (!category) throw new Error("Category not found");
-    return category;
+    if (!category) { set.status = 404; return "Category not found"; }return category;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.category.create({
         data: body,
       });

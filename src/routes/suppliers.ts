@@ -11,19 +11,19 @@ export const supplierRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const supplier = await prisma.supplier.findUnique({
       where: { id: params.id },
       include: {
         products: true,
       },
     });
-    if (!supplier) throw new Error("Supplier not found");
-    return supplier;
+    if (!supplier) { set.status = 404; return "Supplier not found"; }return supplier;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.supplier.create({
         data: body,
       });

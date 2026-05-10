@@ -20,7 +20,7 @@ export const stockTransferRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const transfer = await prisma.stockTransfer.findUnique({
       where: { id: params.id },
       include: {
@@ -33,13 +33,13 @@ export const stockTransferRoutes = new Elysia({
         },
       },
     });
-    if (!transfer) throw new Error("Stock Transfer not found");
-    return transfer;
+    if (!transfer) { set.status = 404; return "Stock Transfer not found"; }return transfer;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
       const transferNumber = `TRF-${Date.now()}`;
+      set.status = 201;
       return prisma.stockTransfer.create({
         data: {
           transferNumber,
@@ -74,7 +74,8 @@ export const stockTransferRoutes = new Elysia({
   )
   .post(
     "/:id/complete",
-    async ({ params, body }) => {
+    async ({ params, body, set }) => {
+      set.status = 201;
       return prisma.$transaction(async (tx: any) => {
         const transfer = await tx.stockTransfer.update({
           where: { id: params.id },
@@ -136,7 +137,7 @@ export const stockTransferRoutes = new Elysia({
       }),
     },
   )
-  .delete("/:id", async ({ params }) => {
+  .delete("/:id", async ({ params, set }) => {
     return prisma.stockTransfer.delete({
       where: { id: params.id },
     });

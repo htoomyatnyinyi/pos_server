@@ -19,15 +19,13 @@ export const inventoryRoutes = new Elysia({
       })
       .post(
         "/",
-        async ({ body }) => {
+        async ({ body, set }) => {
           // 1. Get current stock
           const product = await prisma.product.findUnique({
             where: { id: body.productId },
           });
 
-          if (!product) throw new Error("Product not found");
-
-          const previousStock = product.stockQuantity;
+          if (!product) { set.status = 404; return "Product not found"; }const previousStock = product.stockQuantity;
           const newStock = previousStock + body.quantity;
 
           // 2. Create movement and update product stock in a transaction
@@ -97,9 +95,10 @@ export const inventoryRoutes = new Elysia({
       })
       .post(
         "/",
-        async ({ body }) => {
+        async ({ body, set }) => {
           const countNumber = `CNT-${Date.now()}`;
-          return prisma.inventoryCount.create({
+          set.status = 201;
+      return prisma.inventoryCount.create({
             data: {
               countNumber,
               storeId: body.storeId,

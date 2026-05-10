@@ -26,7 +26,7 @@ export const orderRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const order = await prisma.order.findUnique({
       where: { id: params.id },
       include: {
@@ -39,62 +39,63 @@ export const orderRoutes = new Elysia({
         customer: true,
       },
     });
-    if (!order) throw new Error("Order not found");
-    return order;
+    if (!order) { set.status = 404; return "Order not found"; }return order;
   })
   .post(
     "/",
     async ({ body, set }) => {
       if (!body.userId) {
-        set.status = 400;
-        return { error: "userId is required" };
+        { set.status = 400; return "userId is required"; }
       }
 
       // Generate order number (simple version)
       const orderNumber = `ORD-${Date.now()}`;
 
-      const order = await prisma.order.create({
-        data: {
-          orderNumber,
-          subTotal: body.subTotal,
-          taxAmount: body.taxAmount || 0,
-          discountAmount: body.discountAmount || 0,
-          grandTotal: body.grandTotal,
-          paymentMethod: body.paymentMethod,
-          paidAmount: body.paidAmount,
-          changeAmount: body.changeAmount,
-          paymentStatus: body.paymentStatus || "PAID",
-          status: "COMPLETED",
-          userId: body.userId,
-          customerId: body.customerId,
-          items: {
-            create: body.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              discountAmount: item.discountAmount || 0,
-              subTotal: item.subTotal,
-            })),
-          },
-        },
-        include: {
-          items: true,
-        },
-      });
-
-      // Decrease stock
-      for (const item of body.items) {
-        await prisma.product.update({
-          where: { id: item.productId },
+      return prisma.$transaction(async (tx) => {
+        const order = await tx.order.create({
           data: {
-            stockQuantity: {
-              decrement: item.quantity,
+            orderNumber,
+            subTotal: body.subTotal,
+            taxAmount: body.taxAmount || 0,
+            discountAmount: body.discountAmount || 0,
+            grandTotal: body.grandTotal,
+            paymentMethod: body.paymentMethod,
+            paidAmount: body.paidAmount,
+            changeAmount: body.changeAmount,
+            paymentStatus: body.paymentStatus || "PAID",
+            status: "COMPLETED",
+            userId: body.userId,
+            customerId: body.customerId,
+            items: {
+              create: body.items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                discountAmount: item.discountAmount || 0,
+                subTotal: item.subTotal,
+              })),
             },
           },
+          include: {
+            items: true,
+          },
         });
-      }
 
-      return order;
+        // Decrease stock
+        for (const item of body.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: {
+                decrement: item.quantity,
+              },
+            },
+          });
+        }
+
+        set.status = 201;
+        return order;
+      });
     },
     {
       body: t.Object({

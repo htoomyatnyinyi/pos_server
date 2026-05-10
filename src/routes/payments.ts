@@ -14,19 +14,19 @@ export const paymentRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const payment = await prisma.payment.findUnique({
       where: { id: params.id },
       include: {
         order: true,
       },
     });
-    if (!payment) throw new Error("Payment not found");
-    return payment;
+    if (!payment) { set.status = 404; return "Payment not found"; }return payment;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.payment.create({
         data: body,
       });
@@ -61,7 +61,14 @@ export const paymentRoutes = new Elysia({
       body: t.Partial(
         t.Object({
           amount: t.Number(),
-          method: t.String(),
+          method: t.Enum({
+            CASH: "CASH",
+            KBZ_PAY: "KBZ_PAY",
+            CB_PAY: "CB_PAY",
+            WAVE_PAY: "WAVE_PAY",
+            CARD: "CARD",
+            MIXED_PAYMENT: "MIXED_PAYMENT",
+          }),
           referenceNumber: t.String(),
           status: t.String(),
         }),

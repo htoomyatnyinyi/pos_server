@@ -14,19 +14,19 @@ export const storeSettingRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const setting = await prisma.storeSetting.findUnique({
       where: { id: params.id },
       include: {
         store: true,
       },
     });
-    if (!setting) throw new Error("Store setting not found");
-    return setting;
+    if (!setting) { set.status = 404; return "Store setting not found"; }return setting;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.storeSetting.upsert({
         where: {
           storeId_settingKey: {

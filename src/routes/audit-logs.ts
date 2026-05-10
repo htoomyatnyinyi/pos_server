@@ -26,19 +26,19 @@ export const auditLogRoutes = new Elysia({
       skip: query.offset ? parseInt(query.offset) : 0,
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const log = await prisma.auditLog.findUnique({
       where: { id: params.id },
       include: {
         user: true,
       },
     });
-    if (!log) throw new Error("Audit log not found");
-    return log;
+    if (!log) { set.status = 404; return "Audit log not found"; }return log;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.auditLog.create({
         data: {
           userId: body.userId,

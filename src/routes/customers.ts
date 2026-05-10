@@ -11,19 +11,19 @@ export const customerRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const customer = await prisma.customer.findUnique({
       where: { id: params.id },
       include: {
         orders: true,
       },
     });
-    if (!customer) throw new Error("Customer not found");
-    return customer;
+    if (!customer) { set.status = 404; return "Customer not found"; }return customer;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.customer.create({
         data: body,
       });

@@ -11,18 +11,18 @@ export const productRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const product = await prisma.product.findUnique({
       where: {
         id: params.id,
       },
     });
-    if (!product) throw new Error("Product not found");
-    return product;
+    if (!product) { set.status = 404; return "Product not found"; }return product;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.product.create({
         data: {
           sku: body.sku,

@@ -23,7 +23,7 @@ export const promotionRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const promotion = await prisma.promotion.findUnique({
       where: { id: params.id },
       include: {
@@ -39,12 +39,12 @@ export const promotionRoutes = new Elysia({
         },
       },
     });
-    if (!promotion) throw new Error("Promotion not found");
-    return promotion;
+    if (!promotion) { set.status = 404; return "Promotion not found"; }return promotion;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.promotion.create({
         data: {
           code: body.code,

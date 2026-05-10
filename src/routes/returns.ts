@@ -24,7 +24,7 @@ export const returnRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const returnData = await prisma.return.findUnique({
       where: { id: params.id },
       include: {
@@ -41,14 +41,14 @@ export const returnRoutes = new Elysia({
         },
       },
     });
-    if (!returnData) throw new Error("Return record not found");
-    return returnData;
+    if (!returnData) { set.status = 404; return "Return record not found"; }return returnData;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
       const returnNumber = `RET-${Date.now()}`;
 
+      set.status = 201;
       return prisma.$transaction(async (tx: any) => {
         const returnRecord = await tx.return.create({
           data: {

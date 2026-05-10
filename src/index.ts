@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import { Prisma } from "@prisma/client";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { authRoutes } from "./routes/auth";
@@ -36,6 +37,26 @@ const app = new Elysia()
       secret: process.env.JWT_SECRET!,
     }),
   )
+  .onError(({ code, error, set }) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        set.status = 409;
+        return {
+          success: false,
+          message: `Unique constraint failed: ${error.meta?.target || "Unknown field"}`,
+          code: "CONFLICT",
+        };
+      }
+      if (error.code === "P2025") {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Record not found",
+          code: "NOT_FOUND",
+        };
+      }
+    }
+  })
   .get("/", () => ({
     message: "POS API Running",
   }))

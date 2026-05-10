@@ -19,7 +19,7 @@ export const purchaseOrderRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const po = await prisma.purchaseOrder.findUnique({
       where: { id: params.id },
       include: {
@@ -31,13 +31,13 @@ export const purchaseOrderRoutes = new Elysia({
         },
       },
     });
-    if (!po) throw new Error("Purchase Order not found");
-    return po;
+    if (!po) { set.status = 404; return "Purchase Order not found"; }return po;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
       const poNumber = `PO-${Date.now()}`;
+      set.status = 201;
       return prisma.purchaseOrder.create({
         data: {
           poNumber,
@@ -83,8 +83,9 @@ export const purchaseOrderRoutes = new Elysia({
       }),
     },
   )
-  .post("/:id/receive", async ({ params, body }) => {
-    return prisma.$transaction(async (tx: any) => {
+  .post("/:id/receive", async ({ params, body, set }) => {
+    set.status = 201;
+      return prisma.$transaction(async (tx: any) => {
       const po = await tx.purchaseOrder.update({
         where: { id: params.id },
         data: {

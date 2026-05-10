@@ -15,16 +15,16 @@ export const notificationRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const notification = await prisma.notification.findUnique({
       where: { id: params.id },
     });
-    if (!notification) throw new Error("Notification not found");
-    return notification;
+    if (!notification) { set.status = 404; return "Notification not found"; }return notification;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.notification.create({
         data: {
           userId: body.userId,

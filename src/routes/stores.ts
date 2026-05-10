@@ -11,19 +11,19 @@ export const storeRoutes = new Elysia({
       },
     });
   })
-  .get("/:id", async ({ params }) => {
+  .get("/:id", async ({ params, set }) => {
     const store = await prisma.store.findUnique({
       where: { id: params.id },
       include: {
         users: true,
       },
     });
-    if (!store) throw new Error("Store not found");
-    return store;
+    if (!store) { set.status = 404; return "Store not found"; }return store;
   })
   .post(
     "/",
-    async ({ body }) => {
+    async ({ body, set }) => {
+      set.status = 201;
       return prisma.store.create({
         data: body,
       });
@@ -61,7 +61,7 @@ export const storeRoutes = new Elysia({
       ),
     },
   )
-  .delete("/:id", async ({ params }) => {
+  .delete("/:id", async ({ params, set }) => {
     return prisma.store.delete({
       where: { id: params.id },
     });
