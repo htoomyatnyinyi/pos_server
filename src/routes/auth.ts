@@ -1,13 +1,20 @@
 import { Elysia, t } from "elysia";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
+import { jwt } from "@elysiajs/jwt";
 
 export const authRoutes = new Elysia({
   prefix: "/auth",
 })
+  .use(
+    jwt({
+      name: "jwt",
+      secret: process.env.JWT_SECRET!,
+    })
+  )
   .post(
     "/register",
-    async ({ body, jwt }) => {
+    async ({ body, jwt, set }) => {
       const existingUser = await prisma.user.findUnique({
         where: {
           email: body.email,
@@ -15,17 +22,16 @@ export const authRoutes = new Elysia({
       });
 
       if (existingUser) {
-        throw new Error("User already exists");
-      }
+        { set.status = 400; return "User already exists"; }}
 
       const hashedPassword = await bcrypt.hash(body.password, 10);
 
       const user = await prisma.user.create({
         data: {
-          username: body.email, // Use email as username for now
+          username: body.email,
           email: body.email,
-          password: hashedPassword,
-          firstName: body.name, // Map name to firstName
+          passwordHash: hashedPassword,
+          name: body.name,
         },
       });
 
@@ -35,7 +41,7 @@ export const authRoutes = new Elysia({
 
       return {
         id: user.id,
-        name: user.firstName,
+        name: user.name,
         email: user.email,
         token,
       };
@@ -50,7 +56,7 @@ export const authRoutes = new Elysia({
   )
   .post(
     "/login",
-    async ({ body, jwt }) => {
+    async ({ body, jwt, set }) => {
       const user = await prisma.user.findUnique({
         where: {
           email: body.email,
@@ -58,18 +64,15 @@ export const authRoutes = new Elysia({
       });
 
       if (!user) {
-        throw new Error("Invalid credentials");
-      }
+        { set.status = 400; return "Invalid credentials"; }}
 
-      if (!user.password) {
-        throw new Error("Invalid credentials");
-      }
-
-      const validPassword = await bcrypt.compare(body.password, user.password);
+      const validPassword = await bcrypt.compare(
+        body.password,
+        user.passwordHash,
+      );
 
       if (!validPassword) {
-        throw new Error("Invalid credentials");
-      }
+        { set.status = 400; return "Invalid credentials"; }}
 
       const token = await jwt.sign({
         id: user.id,
@@ -77,7 +80,7 @@ export const authRoutes = new Elysia({
 
       return {
         id: user.id,
-        name: user.firstName,
+        name: user.name,
         email: user.email,
         token,
       };
