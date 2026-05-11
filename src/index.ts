@@ -27,7 +27,11 @@ const app = new Elysia()
 
   .use(
     cors({
-      origin: true,
+      // origin: true,
+      // development
+      origin: ["*"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     }),
   )
   .use(
@@ -38,6 +42,19 @@ const app = new Elysia()
     }),
   )
   .onError(({ code, error, set }) => {
+    if (code === 'VALIDATION') {
+      set.status = 400;
+      return {
+        success: false,
+        message: "Validation failed",
+        errors: error.all.map(e => ({
+          path: e.path,
+          message: e.message,
+          expected: e.schema?.type || 'unknown'
+        }))
+      };
+    }
+
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2002") {
         set.status = 409;
@@ -56,6 +73,12 @@ const app = new Elysia()
         };
       }
     }
+
+    set.status = 500;
+    return {
+      success: false,
+      message: error.message || "Internal Server Error",
+    };
   })
   .get("/", () => ({
     message: "POS API Running",
