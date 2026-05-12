@@ -56,6 +56,16 @@ CREATE TABLE "Store" (
 );
 
 -- CreateTable
+CREATE TABLE "StoreUser" (
+    "storeId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "assignedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+
+    CONSTRAINT "StoreUser_pkey" PRIMARY KEY ("storeId","userId")
+);
+
+-- CreateTable
 CREATE TABLE "Category" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -106,7 +116,6 @@ CREATE TABLE "Product" (
     "promoEndAt" TIMESTAMP(3),
     "stockQuantity" INTEGER NOT NULL DEFAULT 0,
     "reservedQuantity" INTEGER NOT NULL DEFAULT 0,
-    "availableQuantity" INTEGER NOT NULL DEFAULT 0,
     "reorderPoint" INTEGER NOT NULL DEFAULT 10,
     "reorderQuantity" INTEGER NOT NULL DEFAULT 50,
     "maxStockLevel" INTEGER,
@@ -179,6 +188,7 @@ CREATE TABLE "Order" (
     "voidReason" TEXT,
     "userId" TEXT NOT NULL,
     "customerId" TEXT,
+    "sessionId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "completedAt" TIMESTAMP(3),
@@ -223,6 +233,7 @@ CREATE TABLE "Return" (
     "id" TEXT NOT NULL,
     "returnNumber" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
+    "customerId" TEXT,
     "totalAmount" DECIMAL(12,2) NOT NULL,
     "refundMethod" "PaymentMethod" NOT NULL,
     "refundStatus" TEXT NOT NULL DEFAULT 'PENDING',
@@ -424,6 +435,22 @@ CREATE TABLE "Promotion" (
 );
 
 -- CreateTable
+CREATE TABLE "PromotionProduct" (
+    "promotionId" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+
+    CONSTRAINT "PromotionProduct_pkey" PRIMARY KEY ("promotionId","productId")
+);
+
+-- CreateTable
+CREATE TABLE "PromotionCategory" (
+    "promotionId" TEXT NOT NULL,
+    "categoryId" TEXT NOT NULL,
+
+    CONSTRAINT "PromotionCategory_pkey" PRIMARY KEY ("promotionId","categoryId")
+);
+
+-- CreateTable
 CREATE TABLE "Notification" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -435,46 +462,6 @@ CREATE TABLE "Notification" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "_UserStore" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-
-    CONSTRAINT "_UserStore_AB_pkey" PRIMARY KEY ("A","B")
-);
-
--- CreateTable
-CREATE TABLE "_PromotionCategories" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-
-    CONSTRAINT "_PromotionCategories_AB_pkey" PRIMARY KEY ("A","B")
-);
-
--- CreateTable
-CREATE TABLE "_PromotionProducts" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-
-    CONSTRAINT "_PromotionProducts_AB_pkey" PRIMARY KEY ("A","B")
-);
-
--- CreateTable
-CREATE TABLE "_CustomerToReturn" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-
-    CONSTRAINT "_CustomerToReturn_AB_pkey" PRIMARY KEY ("A","B")
-);
-
--- CreateTable
-CREATE TABLE "_OrderToSession" (
-    "A" TEXT NOT NULL,
-    "B" TEXT NOT NULL,
-
-    CONSTRAINT "_OrderToSession_AB_pkey" PRIMARY KEY ("A","B")
 );
 
 -- CreateIndex
@@ -494,6 +481,9 @@ CREATE UNIQUE INDEX "User_email_deletedAt_key" ON "User"("email", "deletedAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Store_code_key" ON "Store"("code");
+
+-- CreateIndex
+CREATE INDEX "StoreUser_userId_idx" ON "StoreUser"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Category_slug_key" ON "Category"("slug");
@@ -565,6 +555,9 @@ CREATE INDEX "Order_userId_createdAt_idx" ON "Order"("userId", "createdAt");
 CREATE INDEX "Order_customerId_idx" ON "Order"("customerId");
 
 -- CreateIndex
+CREATE INDEX "Order_sessionId_idx" ON "Order"("sessionId");
+
+-- CreateIndex
 CREATE INDEX "OrderItem_productId_idx" ON "OrderItem"("productId");
 
 -- CreateIndex
@@ -589,6 +582,12 @@ CREATE INDEX "Return_returnNumber_idx" ON "Return"("returnNumber");
 CREATE INDEX "Return_orderId_idx" ON "Return"("orderId");
 
 -- CreateIndex
+CREATE INDEX "Return_customerId_idx" ON "Return"("customerId");
+
+-- CreateIndex
+CREATE INDEX "ReturnItem_orderItemId_idx" ON "ReturnItem"("orderItemId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "ReturnItem_returnId_orderItemId_key" ON "ReturnItem"("returnId", "orderItemId");
 
 -- CreateIndex
@@ -605,6 +604,9 @@ CREATE UNIQUE INDEX "InventoryCount_countNumber_key" ON "InventoryCount"("countN
 
 -- CreateIndex
 CREATE INDEX "InventoryCount_status_scheduledDate_idx" ON "InventoryCount"("status", "scheduledDate");
+
+-- CreateIndex
+CREATE INDEX "InventoryCountItem_productId_idx" ON "InventoryCountItem"("productId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "InventoryCountItem_inventoryCountId_productId_key" ON "InventoryCountItem"("inventoryCountId", "productId");
@@ -625,6 +627,9 @@ CREATE INDEX "PurchaseOrder_poNumber_idx" ON "PurchaseOrder"("poNumber");
 CREATE INDEX "PurchaseOrder_supplierId_status_idx" ON "PurchaseOrder"("supplierId", "status");
 
 -- CreateIndex
+CREATE INDEX "PurchaseOrderItem_productId_idx" ON "PurchaseOrderItem"("productId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "PurchaseOrderItem_poId_productId_key" ON "PurchaseOrderItem"("poId", "productId");
 
 -- CreateIndex
@@ -635,6 +640,9 @@ CREATE INDEX "StockTransfer_transferNumber_idx" ON "StockTransfer"("transferNumb
 
 -- CreateIndex
 CREATE INDEX "StockTransfer_fromStoreId_toStoreId_idx" ON "StockTransfer"("fromStoreId", "toStoreId");
+
+-- CreateIndex
+CREATE INDEX "StockTransferItem_productId_idx" ON "StockTransferItem"("productId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "StockTransferItem_transferId_productId_key" ON "StockTransferItem"("transferId", "productId");
@@ -649,6 +657,9 @@ CREATE INDEX "AuditLog_userId_createdAt_idx" ON "AuditLog"("userId", "createdAt"
 CREATE INDEX "AuditLog_action_createdAt_idx" ON "AuditLog"("action", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "StoreSetting_settingKey_idx" ON "StoreSetting"("settingKey");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "StoreSetting_storeId_settingKey_key" ON "StoreSetting"("storeId", "settingKey");
 
 -- CreateIndex
@@ -661,25 +672,22 @@ CREATE INDEX "Promotion_code_isActive_idx" ON "Promotion"("code", "isActive");
 CREATE INDEX "Promotion_startDate_endDate_idx" ON "Promotion"("startDate", "endDate");
 
 -- CreateIndex
+CREATE INDEX "PromotionProduct_productId_idx" ON "PromotionProduct"("productId");
+
+-- CreateIndex
+CREATE INDEX "PromotionCategory_categoryId_idx" ON "PromotionCategory"("categoryId");
+
+-- CreateIndex
 CREATE INDEX "Notification_userId_isRead_idx" ON "Notification"("userId", "isRead");
 
 -- CreateIndex
 CREATE INDEX "Notification_createdAt_idx" ON "Notification"("createdAt");
 
--- CreateIndex
-CREATE INDEX "_UserStore_B_index" ON "_UserStore"("B");
+-- AddForeignKey
+ALTER TABLE "StoreUser" ADD CONSTRAINT "StoreUser_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- CreateIndex
-CREATE INDEX "_PromotionCategories_B_index" ON "_PromotionCategories"("B");
-
--- CreateIndex
-CREATE INDEX "_PromotionProducts_B_index" ON "_PromotionProducts"("B");
-
--- CreateIndex
-CREATE INDEX "_CustomerToReturn_B_index" ON "_CustomerToReturn"("B");
-
--- CreateIndex
-CREATE INDEX "_OrderToSession_B_index" ON "_OrderToSession"("B");
+-- AddForeignKey
+ALTER TABLE "StoreUser" ADD CONSTRAINT "StoreUser_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Category" ADD CONSTRAINT "Category_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -691,13 +699,16 @@ ALTER TABLE "Product" ADD CONSTRAINT "Product_categoryId_fkey" FOREIGN KEY ("cat
 ALTER TABLE "Product" ADD CONSTRAINT "Product_supplierId_fkey" FOREIGN KEY ("supplierId") REFERENCES "Supplier"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PriceHistory" ADD CONSTRAINT "PriceHistory_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Order" ADD CONSTRAINT "Order_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Order" ADD CONSTRAINT "Order_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Order" ADD CONSTRAINT "Order_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "Session"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -712,7 +723,13 @@ ALTER TABLE "Payment" ADD CONSTRAINT "Payment_orderId_fkey" FOREIGN KEY ("orderI
 ALTER TABLE "Return" ADD CONSTRAINT "Return_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Return" ADD CONSTRAINT "Return_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "ReturnItem" ADD CONSTRAINT "ReturnItem_returnId_fkey" FOREIGN KEY ("returnId") REFERENCES "Return"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReturnItem" ADD CONSTRAINT "ReturnItem_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -766,34 +783,16 @@ ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userI
 ALTER TABLE "StoreSetting" ADD CONSTRAINT "StoreSetting_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "PromotionProduct" ADD CONSTRAINT "PromotionProduct_promotionId_fkey" FOREIGN KEY ("promotionId") REFERENCES "Promotion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PromotionProduct" ADD CONSTRAINT "PromotionProduct_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PromotionCategory" ADD CONSTRAINT "PromotionCategory_promotionId_fkey" FOREIGN KEY ("promotionId") REFERENCES "Promotion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PromotionCategory" ADD CONSTRAINT "PromotionCategory_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Notification" ADD CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_UserStore" ADD CONSTRAINT "_UserStore_A_fkey" FOREIGN KEY ("A") REFERENCES "Store"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_UserStore" ADD CONSTRAINT "_UserStore_B_fkey" FOREIGN KEY ("B") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_PromotionCategories" ADD CONSTRAINT "_PromotionCategories_A_fkey" FOREIGN KEY ("A") REFERENCES "Category"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_PromotionCategories" ADD CONSTRAINT "_PromotionCategories_B_fkey" FOREIGN KEY ("B") REFERENCES "Promotion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_PromotionProducts" ADD CONSTRAINT "_PromotionProducts_A_fkey" FOREIGN KEY ("A") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_PromotionProducts" ADD CONSTRAINT "_PromotionProducts_B_fkey" FOREIGN KEY ("B") REFERENCES "Promotion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_CustomerToReturn" ADD CONSTRAINT "_CustomerToReturn_A_fkey" FOREIGN KEY ("A") REFERENCES "Customer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_CustomerToReturn" ADD CONSTRAINT "_CustomerToReturn_B_fkey" FOREIGN KEY ("B") REFERENCES "Return"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_OrderToSession" ADD CONSTRAINT "_OrderToSession_A_fkey" FOREIGN KEY ("A") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "_OrderToSession" ADD CONSTRAINT "_OrderToSession_B_fkey" FOREIGN KEY ("B") REFERENCES "Session"("id") ON DELETE CASCADE ON UPDATE CASCADE;

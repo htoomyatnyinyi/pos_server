@@ -42,16 +42,16 @@ const app = new Elysia()
     }),
   )
   .onError(({ code, error, set }) => {
-    if (code === 'VALIDATION') {
+    if (code === "VALIDATION") {
       set.status = 400;
       return {
         success: false,
         message: "Validation failed",
-        errors: error.all.map(e => ({
+        errors: error.all.map((e) => ({
           path: e.path,
           message: e.message,
-          expected: e.schema?.type || 'unknown'
-        }))
+          expected: e.schema?.type || "unknown",
+        })),
       };
     }
 
@@ -77,7 +77,7 @@ const app = new Elysia()
     set.status = 500;
     return {
       success: false,
-      message: error.message || "Internal Server Error",
+      message: error?.message || "Internal Server Error",
     };
   })
   .get("/", () => ({

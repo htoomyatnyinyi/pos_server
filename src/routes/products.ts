@@ -11,6 +11,17 @@ export const productRoutes = new Elysia({
       },
     });
   })
+  .get("/barcode/:barcode", async ({ params, set }) => {
+    const product = await prisma.product.findUnique({
+      where: { barcode: params.barcode },
+      include: { category: true },
+    });
+    if (!product) {
+      set.status = 404;
+      return { found: false, message: "No product found with this barcode" };
+    }
+    return { found: true, product };
+  })
   .get("/:id", async ({ params, set }) => {
     const product = await prisma.product.findUnique({
       where: {
