@@ -130,12 +130,12 @@ export const purchaseOrderRoutes = new Elysia({
     {
       body: t.Partial(
         t.Object({
-          status: t.String(),
-          expectedDate: t.String(),
-          notes: t.String(),
-          subTotal: t.Number(),
-          taxAmount: t.Number(),
-          grandTotal: t.Number(),
+          status: t.Optional(t.String()),
+          expectedDate: t.Optional(t.String()),
+          notes: t.Optional(t.String()),
+          subTotal: t.Optional(t.Number()),
+          taxAmount: t.Optional(t.Number()),
+          grandTotal: t.Optional(t.Number()),
         }),
       ),
     },

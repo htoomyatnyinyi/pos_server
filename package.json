@@ -6,7 +6,8 @@
     "dev": "bun run --watch src/index.ts",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "seed": "bun run prisma/seed.ts"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.2",

@@ -114,12 +114,12 @@ export const orderRoutes = new Elysia({
         paidAmount: t.Number(),
         changeAmount: t.Number(),
         paymentStatus: t.Optional(t.String()),
-        userId: t.String(),
+        userId: t.String({ minLength: 1 }),
         customerId: t.Optional(t.String()),
         items: t.Array(
           t.Object({
             productId: t.String(),
-            quantity: t.Number(),
+            quantity: t.Integer(),
             unitPrice: t.Number(),
             discountAmount: t.Optional(t.Number()),
             subTotal: t.Number(),

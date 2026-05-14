@@ -129,17 +129,17 @@ export const staffRoutes = new Elysia({
     {
       body: t.Partial(
         t.Object({
-          username: t.String(),
-          email: t.String(),
-          name: t.String(),
-          password: t.String(),
-          role: t.Enum({
+          username: t.Optional(t.String()),
+          email: t.Optional(t.String()),
+          name: t.Optional(t.String()),
+          password: t.Optional(t.String()),
+          role: t.Optional(t.Enum({
             ADMIN: "ADMIN",
             MANAGER: "MANAGER",
             CASHIER: "CASHIER",
             ACCOUNTANT: "ACCOUNTANT",
-          }),
-          permissions: t.Array(
+          })),
+          permissions: t.Optional(t.Array(
             t.Enum({
               VIEW_REPORTS: "VIEW_REPORTS",
               EDIT_PRICES: "EDIT_PRICES",
@@ -149,8 +149,8 @@ export const staffRoutes = new Elysia({
               REFUND_ORDERS: "REFUND_ORDERS",
               VIEW_AUDIT_LOGS: "VIEW_AUDIT_LOGS",
             }),
-          ),
-          isActive: t.Boolean(),
+          )),
+          isActive: t.Optional(t.Boolean()),
         }),
       ),
     },

@@ -12,6 +12,13 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - mynetwork
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d posdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 
   app:
     build: .
@@ -26,8 +33,12 @@ services:
     environment:
       DATABASE_URL: "postgresql://postgres:password@db:5432/posdb"
       JWT_SECRET: "supersecret"
+    command: >
+      sh -c "bun x prisma generate && bun run src/index.ts"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    restart: always
     networks:
       - mynetwork
 
@@ -40,6 +51,7 @@ services:
       - mynetwork
     depends_on:
       - app
+    restart: always
 
 volumes:
   pgdata:
