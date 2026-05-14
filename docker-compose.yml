@@ -27,14 +27,17 @@ services:
       - .env
     ports:
       - "6060:6060"
-    volumes: #may be cna delete this
-      - .:/app
-      - /app/node_modules
+    # volumes: #may be cna delete this
+    #   - .:/app
+    #   - /app/node_modules
     environment:
       DATABASE_URL: "postgresql://postgres:password@db:5432/posdb"
       JWT_SECRET: "supersecret"
-    command: >
-      sh -c "bun x prisma generate && bun run src/index.ts"
+    command: bun run src/index.ts
+    # Note: You already have prisma generate in your Dockerfile, 
+    # so you can simplify this command.
+    # command: bun run src/index.ts
+    # command: sh -c "bun x prisma generate && bun run src/index.ts" # this comment out becaues at Dockerfile i already make bun x prisma generate setup already
     depends_on:
       db:
         condition: service_healthy
