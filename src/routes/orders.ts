@@ -4,8 +4,14 @@ import { prisma } from "../lib/prisma";
 export const orderRoutes = new Elysia({
   prefix: "/orders",
 })
-  .get("/", async () => {
+  .get("/", async ({ query }) => {
+    const where: any = {};
+    if (query.storeId) {
+      where.storeId = query.storeId;
+    }
+
     return prisma.order.findMany({
+      where,
       include: {
         items: {
           include: {
@@ -51,7 +57,7 @@ export const orderRoutes = new Elysia({
       // Generate order number (simple version)
       const orderNumber = `ORD-${Date.now()}`;
 
-      return prisma.$transaction(async (tx) => {
+      return prisma.$transaction(async (tx:any) => {
         const order = await tx.order.create({
           data: {
             orderNumber,
@@ -66,6 +72,8 @@ export const orderRoutes = new Elysia({
             status: "COMPLETED",
             userId: body.userId,
             customerId: body.customerId,
+            sessionId: body.sessionId,
+            storeId: body.storeId,
             items: {
               create: body.items.map((item) => ({
                 productId: item.productId,
@@ -114,12 +122,14 @@ export const orderRoutes = new Elysia({
         paidAmount: t.Number(),
         changeAmount: t.Number(),
         paymentStatus: t.Optional(t.String()),
-        userId: t.String(),
+        userId: t.String({ minLength: 1 }),
         customerId: t.Optional(t.String()),
+        sessionId: t.Optional(t.String()),
+        storeId: t.Optional(t.String()),
         items: t.Array(
           t.Object({
             productId: t.String(),
-            quantity: t.Number(),
+            quantity: t.Integer(),
             unitPrice: t.Number(),
             discountAmount: t.Optional(t.Number()),
             subTotal: t.Number(),

@@ -11,8 +11,11 @@ export const categoryRoutes = new Elysia({
       secret: process.env.JWT_SECRET!,
     })
   )
-  .get("/", async () => {
+  .get("/", async ({ query }) => {
     return prisma.category.findMany({
+      where: {
+        storeId: query.storeId as string || undefined,
+      },
       include: {
         parent: true,
         children: true,
@@ -48,6 +51,7 @@ export const categoryRoutes = new Elysia({
         description: t.Optional(t.String()),
         parentId: t.Optional(t.String()),
         sortOrder: t.Optional(t.Integer()),
+        storeId: t.String(),
       }),
     },
   )
@@ -62,12 +66,12 @@ export const categoryRoutes = new Elysia({
     {
       body: t.Partial(
         t.Object({
-          name: t.String(),
-          slug: t.String(),
-          description: t.String(),
-          parentId: t.String(),
-          sortOrder: t.Integer(),
-          isActive: t.Boolean(),
+          name: t.Optional(t.String()),
+          slug: t.Optional(t.String()),
+          description: t.Optional(t.String()),
+          parentId: t.Optional(t.String()),
+          sortOrder: t.Optional(t.Integer()),
+          isActive: t.Optional(t.Boolean()),
         }),
       ),
     },

@@ -25,12 +25,15 @@ export const storeRoutes = new Elysia({
     async ({ body, set }) => {
       set.status = 201;
       return prisma.store.create({
-        data: body,
+        data: {
+          ...body,
+          code: body.code || `STR-${Date.now()}`,
+        },
       });
     },
     {
       body: t.Object({
-        code: t.String(),
+        code: t.Optional(t.String()),
         name: t.String(),
         address: t.Optional(t.String()),
         phone: t.Optional(t.String()),
@@ -50,13 +53,13 @@ export const storeRoutes = new Elysia({
     {
       body: t.Partial(
         t.Object({
-          code: t.String(),
-          name: t.String(),
-          address: t.String(),
-          phone: t.String(),
-          email: t.String(),
-          taxNumber: t.String(),
-          isActive: t.Boolean(),
+          code: t.Optional(t.String()),
+          name: t.Optional(t.String()),
+          address: t.Optional(t.String()),
+          phone: t.Optional(t.String()),
+          email: t.Optional(t.String()),
+          taxNumber: t.Optional(t.String()),
+          isActive: t.Optional(t.Boolean()),
         }),
       ),
     },
