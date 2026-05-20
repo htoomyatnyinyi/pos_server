@@ -6,11 +6,21 @@ import bcrypt from "bcryptjs";
 export const staffRoutes = new Elysia({
   prefix: "/staff",
 })
-  .get("/", async () => {
+  .get("/", async ({ query }) => {
+    const where: any = {
+      deletedAt: null,
+    };
+
+    if (query.storeId) {
+      where.stores = {
+        some: {
+          storeId: query.storeId
+        }
+      };
+    }
+
     return prisma.user.findMany({
-      where: {
-        deletedAt: null,
-      },
+      where,
       select: {
         id: true,
         username: true,
@@ -50,15 +60,27 @@ export const staffRoutes = new Elysia({
     "/",
     async ({ body, set }) => {
       const hashedPassword = await bcrypt.hash(body.password, 10);
+      
+      if (!body.email) {
+        set.status = 400;
+        return { message: "Email is required" };
+      }
+      const emailLower = body.email.toLowerCase().trim();
       const user = await prisma.user.create({
         data: {
-          username: body.username,
-          email: body.email,
+          username: body.username?.toLowerCase().trim() || emailLower,
+          email: emailLower,
           name: body.name,
           passwordHash: hashedPassword,
           role: body.role,
           permissions: body.permissions,
           isActive: body.isActive ?? true,
+          stores: body.storeId ? {
+            create: {
+              storeId: body.storeId,
+              isPrimary: true
+            }
+          } : undefined
         },
         select: {
           id: true,
@@ -78,9 +100,10 @@ export const staffRoutes = new Elysia({
     {
       body: t.Object({
         username: t.String(),
-        email: t.Optional(t.String()),
+        email: t.String(),
         name: t.String(),
         password: t.String(),
+        storeId: t.Optional(t.String()),
         role: t.Enum({
           ADMIN: "ADMIN",
           MANAGER: "MANAGER",
@@ -129,17 +152,17 @@ export const staffRoutes = new Elysia({
     {
       body: t.Partial(
         t.Object({
-          username: t.String(),
-          email: t.String(),
-          name: t.String(),
-          password: t.String(),
-          role: t.Enum({
+          username: t.Optional(t.String()),
+          email: t.Optional(t.String()),
+          name: t.Optional(t.String()),
+          password: t.Optional(t.String()),
+          role: t.Optional(t.Enum({
             ADMIN: "ADMIN",
             MANAGER: "MANAGER",
             CASHIER: "CASHIER",
             ACCOUNTANT: "ACCOUNTANT",
-          }),
-          permissions: t.Array(
+          })),
+          permissions: t.Optional(t.Array(
             t.Enum({
               VIEW_REPORTS: "VIEW_REPORTS",
               EDIT_PRICES: "EDIT_PRICES",
@@ -149,8 +172,8 @@ export const staffRoutes = new Elysia({
               REFUND_ORDERS: "REFUND_ORDERS",
               VIEW_AUDIT_LOGS: "VIEW_AUDIT_LOGS",
             }),
-          ),
-          isActive: t.Boolean(),
+          )),
+          isActive: t.Optional(t.Boolean()),
         }),
       ),
     },

@@ -6,8 +6,11 @@ export const inventoryRoutes = new Elysia({
 })
   .group("/movements", (app) =>
     app
-      .get("/", async () => {
+      .get("/", async ({ query }) => {
         return prisma.stockMovement.findMany({
+          where: {
+            storeId: query.storeId as string || undefined,
+          },
           include: {
             product: true,
             user: true,
