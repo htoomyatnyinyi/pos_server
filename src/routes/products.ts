@@ -7,10 +7,13 @@ export const productRoutes = new Elysia({
   .get("/", async ({ query }) => {
     return prisma.product.findMany({
       where: {
-        storeId: query.storeId as string || undefined,
+        storeId: (query.storeId as string) || undefined,
       },
       include: {
         category: true,
+        supplier: true,
+        // variants: true,
+        variantsOption: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -20,7 +23,7 @@ export const productRoutes = new Elysia({
   .get("/barcode/:barcode", async ({ params, set }) => {
     const product = await prisma.product.findUnique({
       where: { barcode: params.barcode },
-      include: { category: true },
+      include: { category: true, supplier: true, variantsOption: true },
     });
     if (!product) {
       set.status = 404;
@@ -33,7 +36,7 @@ export const productRoutes = new Elysia({
       where: {
         id: params.id,
       },
-      include: { category: true },
+      include: { category: true, supplier: true, variantsOption: true },
     });
     if (!product) {
       set.status = 404;
@@ -52,7 +55,7 @@ export const productRoutes = new Elysia({
           where: {
             slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
             storeId: body.storeId || null,
-          }
+          },
         });
         if (!category) {
           category = await prisma.category.create({
@@ -60,7 +63,7 @@ export const productRoutes = new Elysia({
               name: body.categoryName,
               slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
               storeId: body.storeId,
-            }
+            },
           });
         }
         categoryId = category.id;
@@ -84,7 +87,11 @@ export const productRoutes = new Elysia({
           stockQuantity: body.stockQuantity,
           categoryId: categoryId,
           supplierId: body.supplierId,
+          manufacturingDate: body.manufacturingDate,
+          expiryDate: body.expiryDate,
           storeId: body.storeId,
+          variants: body.variants,
+          // variantsOption: body. ,
         },
       });
     },
@@ -100,8 +107,28 @@ export const productRoutes = new Elysia({
         stockQuantity: t.Integer(),
         categoryId: t.Optional(t.String()),
         categoryName: t.Optional(t.String()),
+        manufacturingDate: t.Optional(t.Date()),
+        expiryDate: t.Optional(t.Date()),
         supplierId: t.Optional(t.String()),
         storeId: t.String(),
+        variants: t.Optional(
+          t.Array(
+            t.Object({
+              name: t.String(),
+              price: t.Number(),
+              stockQuantity: t.Integer(),
+              color: t.Optional(t.String()),
+              size: t.Optional(t.String()),
+              weight: t.Optional(t.Number()),
+              unitPrice: t.Number(),
+              costPrice: t.Number(),
+              isActive: t.Boolean(),
+              sku: t.String(),
+              barcode: t.Optional(t.String()),
+              storeId: t.String(),
+            }),
+          ),
+        ),
       }),
     },
   )
@@ -113,7 +140,7 @@ export const productRoutes = new Elysia({
       if (!categoryId && body.categoryName) {
         const existingProduct = await prisma.product.findUnique({
           where: { id: params.id },
-          select: { storeId: true }
+          select: { storeId: true },
         });
         const storeId = existingProduct?.storeId || null;
 
@@ -121,7 +148,7 @@ export const productRoutes = new Elysia({
           where: {
             slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
             storeId: storeId,
-          }
+          },
         });
         if (!category) {
           category = await prisma.category.create({
@@ -129,7 +156,7 @@ export const productRoutes = new Elysia({
               name: body.categoryName,
               slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
               storeId: storeId,
-            }
+            },
           });
         }
         categoryId = category.id;
@@ -148,6 +175,8 @@ export const productRoutes = new Elysia({
           stockQuantity: body.stockQuantity,
           categoryId: categoryId,
           supplierId: body.supplierId,
+          manufacturingDate: body.manufacturingDate,
+          expiryDate: body.expiryDate,
         },
       });
     },
@@ -164,6 +193,8 @@ export const productRoutes = new Elysia({
           stockQuantity: t.Integer(),
           categoryId: t.Optional(t.String()),
           categoryName: t.Optional(t.String()),
+          manufacturingDate: t.Optional(t.Date()),
+          expiryDate: t.Optional(t.Date()),
           supplierId: t.Optional(t.String()),
         }),
       ),

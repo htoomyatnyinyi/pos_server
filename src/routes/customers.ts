@@ -18,7 +18,11 @@ export const customerRoutes = new Elysia({
         orders: true,
       },
     });
-    if (!customer) { set.status = 404; return "Customer not found"; }return customer;
+    if (!customer) {
+      set.status = 404;
+      return "Customer not found";
+    }
+    return customer;
   })
   .post(
     "/",
@@ -39,6 +43,7 @@ export const customerRoutes = new Elysia({
         email: t.Optional(t.String()),
         address: t.Optional(t.String()),
         dateOfBirth: t.Optional(t.String()),
+        debtAmount: t.Optional(t.Number()),
         gender: t.Optional(t.String()),
         tier: t.Optional(t.String()),
       }),
@@ -61,6 +66,7 @@ export const customerRoutes = new Elysia({
           email: t.Optional(t.String()),
           address: t.Optional(t.String()),
           dateOfBirth: t.Optional(t.String()),
+          debtAmount: t.Optional(t.Number()),
           gender: t.Optional(t.String()),
           loyaltyPoints: t.Optional(t.Integer()),
           totalSpent: t.Optional(t.Number()),

@@ -45,19 +45,26 @@ export const orderRoutes = new Elysia({
         customer: true,
       },
     });
-    if (!order) { set.status = 404; return "Order not found"; }return order;
+    if (!order) {
+      set.status = 404;
+      return "Order not found";
+    }
+    return order;
   })
   .post(
     "/",
     async ({ body, set }) => {
       if (!body.userId) {
-        { set.status = 400; return "userId is required"; }
+        {
+          set.status = 400;
+          return "userId is required";
+        }
       }
 
       // Generate order number (simple version)
       const orderNumber = `ORD-${Date.now()}`;
 
-      return prisma.$transaction(async (tx:any) => {
+      return prisma.$transaction(async (tx: any) => {
         const order = await tx.order.create({
           data: {
             orderNumber,

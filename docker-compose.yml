@@ -59,22 +59,22 @@ services:
       timeout: 10s
       retries: 3
 
-  tunnel:
-    image: cloudflare/cloudflared:2025.5.0
-    container_name: pos_tunnel
+  # tunnel:
+  #   image: cloudflare/cloudflared:2025.5.0
+  #   container_name: pos_tunnel
 
-    command: tunnel --no-autoupdate run
+  #   command: tunnel --no-autoupdate run
 
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
 
-    depends_on:
-      - app
+  #   depends_on:
+  #     - app
 
-    restart: unless-stopped
+  #   restart: unless-stopped
 
-    networks:
-      - mynetwork
+  #   networks:
+  #     - mynetwork
 
 volumes:
   pgdata:
@@ -82,7 +82,6 @@ volumes:
 networks:
   mynetwork:
     driver: bridge
-
 
 # services:
 #   db:
@@ -104,7 +103,6 @@ networks:
 #       interval: 5s
 #       timeout: 5s
 #       retries: 5
-
 
 #   app:
 #     build: .

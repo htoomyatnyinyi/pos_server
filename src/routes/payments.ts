@@ -21,7 +21,11 @@ export const paymentRoutes = new Elysia({
         order: true,
       },
     });
-    if (!payment) { set.status = 404; return "Payment not found"; }return payment;
+    if (!payment) {
+      set.status = 404;
+      return "Payment not found";
+    }
+    return payment;
   })
   .post(
     "/",

@@ -39,7 +39,11 @@ export const promotionRoutes = new Elysia({
         },
       },
     });
-    if (!promotion) { set.status = 404; return "Promotion not found"; }return promotion;
+    if (!promotion) {
+      set.status = 404;
+      return "Promotion not found";
+    }
+    return promotion;
   })
   .post(
     "/",
@@ -58,16 +62,20 @@ export const promotionRoutes = new Elysia({
           usageLimit: body.usageLimit,
           perUserLimit: body.perUserLimit,
           isActive: body.isActive ?? true,
-          products: body.productIds ? {
-            create: body.productIds.map((id) => ({
-              productId: id,
-            })),
-          } : undefined,
-          categories: body.categoryIds ? {
-            create: body.categoryIds.map((id) => ({
-              categoryId: id,
-            })),
-          } : undefined,
+          products: body.productIds
+            ? {
+                create: body.productIds.map((id) => ({
+                  productId: id,
+                })),
+              }
+            : undefined,
+          categories: body.categoryIds
+            ? {
+                create: body.categoryIds.map((id) => ({
+                  categoryId: id,
+                })),
+              }
+            : undefined,
         },
       });
     },

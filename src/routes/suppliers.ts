@@ -7,7 +7,7 @@ export const supplierRoutes = new Elysia({
   .get("/", async ({ query }) => {
     return prisma.supplier.findMany({
       where: {
-        storeId: query.storeId as string || undefined,
+        storeId: (query.storeId as string) || undefined,
       },
       orderBy: {
         createdAt: "desc",
@@ -21,7 +21,11 @@ export const supplierRoutes = new Elysia({
         products: true,
       },
     });
-    if (!supplier) { set.status = 404; return "Supplier not found"; }return supplier;
+    if (!supplier) {
+      set.status = 404;
+      return "Supplier not found";
+    }
+    return supplier;
   })
   .post(
     "/",
