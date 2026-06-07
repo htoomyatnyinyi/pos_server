@@ -1,93 +1,88 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
 
 export const sessionRoutes = new Elysia({
   prefix: "/sessions",
 })
-  .get("/", async ({ query }) => {
-    const where: any = {};
-    if (query.storeId) {
-      where.storeId = query.storeId;
-    }
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
 
     return prisma.session.findMany({
-      where,
+      where: {
+        tenantId,
+        ...(query.storeId ? { storeId: query.storeId } : {}),
+      },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        user: { select: { id: true, name: true } },
+        register: true,
+        store: true,
       },
-      orderBy: {
-        openedAt: "desc",
-      },
+      orderBy: { openedAt: "desc" },
     });
   })
-  .get("/active/:userId", async ({ params, query }) => {
-    const where: any = {
-      userId: params.userId,
-      status: "OPEN",
-    };
-    if (query.storeId) {
-      where.storeId = query.storeId;
-    }
+  .get("/active/:userId", async ({ params, query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.session.findFirst({
-      where,
+      where: {
+        tenantId,
+        userId: params.userId,
+        status: "OPEN",
+        ...(query.storeId ? { storeId: query.storeId } : {}),
+      },
+      include: { register: true, store: true },
     });
   })
   .post(
     "/open",
     async ({ body, set }) => {
       let storeId = body.storeId;
-      
-      // Auto-detect store if not provided
+
       if (!storeId) {
-        console.log(`[SESSION] No storeId provided for user ${body.userId}, attempting auto-detection...`);
         const userWithStores = await prisma.user.findUnique({
           where: { id: body.userId },
-          include: { stores: { take: 1 } }
+          include: { stores: { take: 1 } },
         });
-        
-        if (userWithStores?.stores?.[0]) {
-          storeId = userWithStores.stores[0].storeId;
-          console.log(`[SESSION] Auto-detected store: ${storeId}`);
-        }
+        storeId = userWithStores?.stores?.[0]?.storeId;
       }
 
-      console.log(`[SESSION] Opening shift for user: ${body.userId} in store: ${storeId}`);
-      try {
-        const session = await prisma.session.create({
-          data: {
-            userId: body.userId,
-            openingBalance: body.openingBalance,
-            storeId: storeId,
-            status: "OPEN",
-          },
-        });
-        console.log(`[SESSION] Shift opened successfully: ${session.id}`);
-        set.status = 201;
-        return session;
-      } catch (error: any) {
-        console.error(`[SESSION] Failed to open shift:`, error);
-        set.status = 500;
-        return { message: "Failed to open shift", error: error.message };
+      if (!storeId) {
+        set.status = 400;
+        return { message: "storeId is required" };
       }
+
+      const session = await prisma.session.create({
+        data: {
+          tenantId: body.tenantId,
+          userId: body.userId,
+          openingBalance: body.openingBalance,
+          storeId,
+          registerId: body.registerId,
+          status: "OPEN",
+          notes: body.notes,
+        },
+      });
+
+      set.status = 201;
+      return session;
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         userId: t.String(),
         openingBalance: t.Number(),
         storeId: t.Optional(t.String()),
+        registerId: t.Optional(t.String()),
         notes: t.Optional(t.String()),
       }),
     },
   )
   .post(
     "/:id/close",
-    async ({ params, body, set }) => {
-      set.status = 201;
+    async ({ params, body }) => {
       return prisma.session.update({
         where: { id: params.id },
         data: {

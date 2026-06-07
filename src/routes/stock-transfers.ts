@@ -1,23 +1,25 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { adjustInventory } from "../lib/inventory";
 
 export const stockTransferRoutes = new Elysia({
   prefix: "/stock-transfers",
 })
-  .get("/", async () => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.stockTransfer.findMany({
+      where: { tenantId },
       include: {
         fromStore: true,
         toStore: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        requestedBy: { select: { id: true, name: true } },
+        approvedBy: { select: { id: true, name: true } },
+        items: { include: { product: true, variant: true } },
       },
-      orderBy: {
-        requestedAt: "desc",
-      },
+      orderBy: { requestedAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
@@ -26,14 +28,16 @@ export const stockTransferRoutes = new Elysia({
       include: {
         fromStore: true,
         toStore: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
+        requestedBy: true,
+        approvedBy: true,
+        items: { include: { product: true, variant: true } },
       },
     });
-    if (!transfer) { set.status = 404; return "Stock Transfer not found"; }return transfer;
+    if (!transfer) {
+      set.status = 404;
+      return { message: "Stock Transfer not found" };
+    }
+    return transfer;
   })
   .post(
     "/",
@@ -42,23 +46,28 @@ export const stockTransferRoutes = new Elysia({
       set.status = 201;
       return prisma.stockTransfer.create({
         data: {
+          tenantId: body.tenantId,
           transferNumber,
           fromStoreId: body.fromStoreId,
           toStoreId: body.toStoreId,
           status: "PENDING",
-          requestedBy: body.userId,
+          requestedById: body.userId,
           notes: body.notes,
           items: {
             create: body.items.map((item) => ({
+              tenantId: body.tenantId,
               productId: item.productId,
+              variantId: item.variantId,
               quantity: item.quantity,
             })),
           },
         },
+        include: { items: true },
       });
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         fromStoreId: t.String(),
         toStoreId: t.String(),
         userId: t.String(),
@@ -66,6 +75,7 @@ export const stockTransferRoutes = new Elysia({
         items: t.Array(
           t.Object({
             productId: t.String(),
+            variantId: t.Optional(t.String()),
             quantity: t.Integer(),
           }),
         ),
@@ -75,70 +85,58 @@ export const stockTransferRoutes = new Elysia({
   .post(
     "/:id/complete",
     async ({ params, body, set }) => {
-      set.status = 201;
-      return prisma.$transaction(async (tx: any) => {
-        const transfer = await tx.stockTransfer.update({
+      const transfer = await prisma.$transaction(async (tx) => {
+        const updated = await tx.stockTransfer.update({
           where: { id: params.id },
           data: {
-            status: "COMPLETED",
+            status: "RECEIVED",
             completedAt: new Date(),
-            approvedBy: body.userId,
+            approvedById: body.userId,
           },
-          include: {
-            items: true,
-          },
+          include: { items: true },
         });
 
-        for (const item of transfer.items) {
-          // Decrement from 'fromStore' and increment 'toStore'
-          // Note: In this simple schema, products have a global stockQuantity.
-          // For a true multi-store, we'd have StoreProduct or similar.
-          // However, based on the schema, stockQuantity is on Product.
-          // If the user intends for multi-store stock tracking, they might need a StoreProduct model.
-          // For now, I'll just adjust the global stock if that's what's available,
-          // or assume the transfer itself records the movement.
-
-          // Actually, let's just record the movement for now as the schema doesn't have StoreProduct.
-          // BUT, StockMovement could be used.
-
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              quantity: -item.quantity,
-              previousStock: 0, // Should be fetched
-              newStock: 0, // Should be fetched
-              type: "TRANSFER_OUT",
-              referenceId: transfer.id,
-              referenceType: "StockTransfer",
-              userId: body.userId,
-            },
+        for (const item of updated.items) {
+          await adjustInventory(tx, {
+            tenantId: updated.tenantId,
+            storeId: updated.fromStoreId,
+            productId: item.productId,
+            variantId: item.variantId,
+            quantityDelta: -item.quantity,
+            userId: body.userId,
+            type: "TRANSFER_OUT",
+            referenceId: updated.id,
+            referenceType: "StockTransfer",
           });
 
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              quantity: item.quantity,
-              previousStock: 0, // Should be fetched
-              newStock: 0, // Should be fetched
-              type: "TRANSFER_IN",
-              referenceId: transfer.id,
-              referenceType: "StockTransfer",
-              userId: body.userId,
-            },
+          await adjustInventory(tx, {
+            tenantId: updated.tenantId,
+            storeId: updated.toStoreId,
+            productId: item.productId,
+            variantId: item.variantId,
+            quantityDelta: item.quantity,
+            userId: body.userId,
+            type: "TRANSFER_IN",
+            referenceId: updated.id,
+            referenceType: "StockTransfer",
+          });
+
+          await tx.stockTransferItem.update({
+            where: { id: item.id },
+            data: { receivedQuantity: item.quantity },
           });
         }
 
-        return transfer;
+        return updated;
       });
+
+      set.status = 201;
+      return transfer;
     },
     {
-      body: t.Object({
-        userId: t.String(),
-      }),
+      body: t.Object({ userId: t.String() }),
     },
   )
-  .delete("/:id", async ({ params, set }) => {
-    return prisma.stockTransfer.delete({
-      where: { id: params.id },
-    });
+  .delete("/:id", async ({ params }) => {
+    return prisma.stockTransfer.delete({ where: { id: params.id } });
   });

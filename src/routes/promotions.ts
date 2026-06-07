@@ -1,47 +1,35 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { discountTypeSchema } from "../lib/schemas";
 
 export const promotionRoutes = new Elysia({
   prefix: "/promotions",
 })
-  .get("/", async () => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.promotion.findMany({
+      where: { tenantId, deletedAt: null },
       include: {
-        products: {
-          include: {
-            product: true,
-          },
-        },
-        categories: {
-          include: {
-            category: true,
-          },
-        },
+        products: { include: { product: true } },
+        categories: { include: { category: true } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
     const promotion = await prisma.promotion.findUnique({
       where: { id: params.id },
       include: {
-        products: {
-          include: {
-            product: true,
-          },
-        },
-        categories: {
-          include: {
-            category: true,
-          },
-        },
+        products: { include: { product: true } },
+        categories: { include: { category: true } },
       },
     });
     if (!promotion) {
       set.status = 404;
-      return "Promotion not found";
+      return { message: "Promotion not found" };
     }
     return promotion;
   })
@@ -51,6 +39,7 @@ export const promotionRoutes = new Elysia({
       set.status = 201;
       return prisma.promotion.create({
         data: {
+          tenantId: body.tenantId,
           code: body.code,
           name: body.name,
           description: body.description,
@@ -63,28 +52,21 @@ export const promotionRoutes = new Elysia({
           perUserLimit: body.perUserLimit,
           isActive: body.isActive ?? true,
           products: body.productIds
-            ? {
-                create: body.productIds.map((id) => ({
-                  productId: id,
-                })),
-              }
+            ? { create: body.productIds.map((productId) => ({ productId })) }
             : undefined,
           categories: body.categoryIds
-            ? {
-                create: body.categoryIds.map((id) => ({
-                  categoryId: id,
-                })),
-              }
+            ? { create: body.categoryIds.map((categoryId) => ({ categoryId })) }
             : undefined,
         },
       });
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         code: t.String(),
         name: t.String(),
         description: t.Optional(t.String()),
-        discountType: t.String(),
+        discountType: discountTypeSchema,
         discountValue: t.Number(),
         minPurchase: t.Optional(t.Number()),
         startDate: t.String(),
@@ -100,7 +82,6 @@ export const promotionRoutes = new Elysia({
   .put(
     "/:id",
     async ({ params, body }) => {
-      // Simplistic update - in reality, updating relations might need more care
       return prisma.promotion.update({
         where: { id: params.id },
         data: {
@@ -116,7 +97,7 @@ export const promotionRoutes = new Elysia({
           code: t.String(),
           name: t.String(),
           description: t.String(),
-          discountType: t.String(),
+          discountType: discountTypeSchema,
           discountValue: t.Number(),
           minPurchase: t.Number(),
           startDate: t.String(),
@@ -129,7 +110,8 @@ export const promotionRoutes = new Elysia({
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.promotion.delete({
+    return prisma.promotion.update({
       where: { id: params.id },
+      data: { deletedAt: new Date(), isActive: false },
     });
   });

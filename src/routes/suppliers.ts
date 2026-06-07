@@ -1,29 +1,27 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
 
 export const supplierRoutes = new Elysia({
   prefix: "/suppliers",
 })
-  .get("/", async ({ query }) => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.supplier.findMany({
-      where: {
-        storeId: (query.storeId as string) || undefined,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
+      where: { tenantId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
     const supplier = await prisma.supplier.findUnique({
       where: { id: params.id },
-      include: {
-        products: true,
-      },
+      include: { products: true, payments: true },
     });
     if (!supplier) {
       set.status = 404;
-      return "Supplier not found";
+      return { message: "Supplier not found" };
     }
     return supplier;
   })
@@ -33,13 +31,22 @@ export const supplierRoutes = new Elysia({
       set.status = 201;
       return prisma.supplier.create({
         data: {
-          ...body,
+          tenantId: body.tenantId,
           code: body.code || `SUP-${Date.now()}`,
+          name: body.name,
+          contactName: body.contactName,
+          phone: body.phone,
+          email: body.email,
+          address: body.address,
+          taxId: body.taxId,
+          paymentTerms: body.paymentTerms,
+          creditLimit: body.creditLimit,
         },
       });
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         code: t.Optional(t.String()),
         name: t.String(),
         contactName: t.Optional(t.String()),
@@ -49,7 +56,6 @@ export const supplierRoutes = new Elysia({
         taxId: t.Optional(t.String()),
         paymentTerms: t.Optional(t.Integer()),
         creditLimit: t.Optional(t.Number()),
-        storeId: t.String(),
       }),
     },
   )
@@ -79,7 +85,8 @@ export const supplierRoutes = new Elysia({
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.supplier.delete({
+    return prisma.supplier.update({
       where: { id: params.id },
+      data: { deletedAt: new Date(), isActive: false },
     });
   });

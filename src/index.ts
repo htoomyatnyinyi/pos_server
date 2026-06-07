@@ -2,7 +2,9 @@ import { Elysia } from "elysia";
 import { Prisma } from "@prisma/client";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
+import { swagger } from "@elysiajs/swagger";
 import { authRoutes } from "./routes/auth";
+import { tenantRoutes } from "./routes/tenants";
 import { productRoutes } from "./routes/products";
 import { orderRoutes } from "./routes/orders";
 import { storeRoutes } from "./routes/stores";
@@ -20,15 +22,19 @@ import { promotionRoutes } from "./routes/promotions";
 import { auditLogRoutes } from "./routes/audit-logs";
 import { storeSettingRoutes } from "./routes/store-settings";
 import { notificationRoutes } from "./routes/notifications";
-import { swagger } from "@elysiajs/swagger";
+import { taxRateRoutes } from "./routes/tax-rates";
+import { expenseRoutes } from "./routes/expenses";
+import { cashRegisterRoutes } from "./routes/cash-registers";
+import { giftCardRoutes } from "./routes/gift-cards";
+import { walletRoutes } from "./routes/wallets";
+import { supplierPaymentRoutes } from "./routes/supplier-payments";
+import { apiKeyRoutes } from "./routes/api-keys";
+import { webhookRoutes } from "./routes/webhooks";
 
 const app = new Elysia()
   .use(swagger())
-
   .use(
     cors({
-      // origin: true,
-      // development
       origin: ["*"],
       allowedHeaders: ["Content-Type", "Authorization"],
       methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -37,7 +43,6 @@ const app = new Elysia()
   .use(
     jwt({
       name: "jwt",
-
       secret: process.env.JWT_SECRET!,
     }),
   )
@@ -86,6 +91,7 @@ const app = new Elysia()
   .group("/api", (app) =>
     app
       .use(authRoutes)
+      .use(tenantRoutes)
       .use(productRoutes)
       .use(orderRoutes)
       .use(storeRoutes)
@@ -102,7 +108,15 @@ const app = new Elysia()
       .use(promotionRoutes)
       .use(auditLogRoutes)
       .use(storeSettingRoutes)
-      .use(notificationRoutes),
+      .use(notificationRoutes)
+      .use(taxRateRoutes)
+      .use(expenseRoutes)
+      .use(cashRegisterRoutes)
+      .use(giftCardRoutes)
+      .use(walletRoutes)
+      .use(supplierPaymentRoutes)
+      .use(apiKeyRoutes)
+      .use(webhookRoutes),
   )
   .listen(6060);
 

@@ -1,29 +1,29 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { paymentMethodSchema } from "../lib/schemas";
 
 export const paymentRoutes = new Elysia({
   prefix: "/payments",
 })
-  .get("/", async () => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.payment.findMany({
-      include: {
-        order: true,
-      },
-      orderBy: {
-        processedAt: "desc",
-      },
+      where: { tenantId },
+      include: { order: true, processedBy: { select: { id: true, name: true } } },
+      orderBy: { processedAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
     const payment = await prisma.payment.findUnique({
       where: { id: params.id },
-      include: {
-        order: true,
-      },
+      include: { order: true, processedBy: true },
     });
     if (!payment) {
       set.status = 404;
-      return "Payment not found";
+      return { message: "Payment not found" };
     }
     return payment;
   })
@@ -32,24 +32,26 @@ export const paymentRoutes = new Elysia({
     async ({ body, set }) => {
       set.status = 201;
       return prisma.payment.create({
-        data: body,
+        data: {
+          tenantId: body.tenantId,
+          orderId: body.orderId,
+          amount: body.amount,
+          method: body.method,
+          referenceNumber: body.referenceNumber,
+          status: body.status || "PAID",
+          processedById: body.processedById,
+        },
       });
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         orderId: t.String(),
         amount: t.Number(),
-        method: t.Enum({
-          CASH: "CASH",
-          KBZ_PAY: "KBZ_PAY",
-          CB_PAY: "CB_PAY",
-          WAVE_PAY: "WAVE_PAY",
-          CARD: "CARD",
-          MIXED_PAYMENT: "MIXED_PAYMENT",
-        }),
+        method: paymentMethodSchema,
         referenceNumber: t.Optional(t.String()),
         status: t.Optional(t.String()),
-        processedBy: t.String(),
+        processedById: t.String(),
       }),
     },
   )
@@ -65,14 +67,7 @@ export const paymentRoutes = new Elysia({
       body: t.Partial(
         t.Object({
           amount: t.Number(),
-          method: t.Enum({
-            CASH: "CASH",
-            KBZ_PAY: "KBZ_PAY",
-            CB_PAY: "CB_PAY",
-            WAVE_PAY: "WAVE_PAY",
-            CARD: "CARD",
-            MIXED_PAYMENT: "MIXED_PAYMENT",
-          }),
+          method: paymentMethodSchema,
           referenceNumber: t.Optional(t.String()),
           status: t.Optional(t.String()),
         }),
@@ -80,7 +75,5 @@ export const paymentRoutes = new Elysia({
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.payment.delete({
-      where: { id: params.id },
-    });
+    return prisma.payment.delete({ where: { id: params.id } });
   });

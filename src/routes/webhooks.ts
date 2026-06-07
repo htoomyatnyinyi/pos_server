@@ -1,62 +1,61 @@
 import { Elysia, t } from "elysia";
+import { randomBytes } from "crypto";
 import { prisma } from "../lib/prisma";
 import { requireTenantId } from "../lib/tenant";
 
-export const storeRoutes = new Elysia({
-  prefix: "/stores",
+export const webhookRoutes = new Elysia({
+  prefix: "/webhooks",
 })
   .get("/", async ({ query, set }) => {
     const tenantId = requireTenantId({ query, set });
     if (!tenantId) return { message: "tenantId is required" };
 
-    return prisma.store.findMany({
-      where: { tenantId, deletedAt: null },
+    return prisma.webhook.findMany({
+      where: { tenantId, isActive: true },
       orderBy: { createdAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
-    const store = await prisma.store.findUnique({
+    const webhook = await prisma.webhook.findUnique({
       where: { id: params.id },
-      include: { users: { include: { user: true } }, cashRegisters: true },
+      include: {
+        deliveries: { take: 20, orderBy: { deliveredAt: "desc" } },
+      },
     });
-    if (!store) {
+    if (!webhook) {
       set.status = 404;
-      return { message: "Store not found" };
+      return { message: "Webhook not found" };
     }
-    return store;
+    return webhook;
   })
   .post(
     "/",
     async ({ body, set }) => {
       set.status = 201;
-      return prisma.store.create({
+      return prisma.webhook.create({
         data: {
           tenantId: body.tenantId,
-          code: body.code || `STR-${Date.now()}`,
           name: body.name,
-          address: body.address,
-          phone: body.phone,
-          email: body.email,
-          taxNumber: body.taxNumber,
+          url: body.url,
+          events: body.events,
+          secret: body.secret ?? randomBytes(16).toString("hex"),
         },
       });
     },
     {
       body: t.Object({
         tenantId: t.String(),
-        code: t.Optional(t.String()),
         name: t.String(),
-        address: t.Optional(t.String()),
-        phone: t.Optional(t.String()),
-        email: t.Optional(t.String()),
-        taxNumber: t.Optional(t.String()),
+        url: t.String(),
+        events: t.Array(t.String()),
+        secret: t.Optional(t.String()),
       }),
     },
   )
   .put(
     "/:id",
     async ({ params, body }) => {
-      return prisma.store.update({
+      return prisma.webhook.update({
         where: { id: params.id },
         data: body,
       });
@@ -64,20 +63,17 @@ export const storeRoutes = new Elysia({
     {
       body: t.Partial(
         t.Object({
-          code: t.Optional(t.String()),
           name: t.Optional(t.String()),
-          address: t.Optional(t.String()),
-          phone: t.Optional(t.String()),
-          email: t.Optional(t.String()),
-          taxNumber: t.Optional(t.String()),
+          url: t.Optional(t.String()),
+          events: t.Optional(t.Array(t.String())),
           isActive: t.Optional(t.Boolean()),
         }),
       ),
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.store.update({
+    return prisma.webhook.update({
       where: { id: params.id },
-      data: { deletedAt: new Date(), isActive: false },
+      data: { isActive: false },
     });
   });

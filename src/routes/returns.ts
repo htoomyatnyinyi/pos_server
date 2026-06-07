@@ -1,27 +1,29 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { adjustInventory } from "../lib/inventory";
+import { paymentMethodSchema } from "../lib/schemas";
 
 export const returnRoutes = new Elysia({
   prefix: "/returns",
 })
-  .get("/", async () => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.return.findMany({
+      where: { tenantId },
       include: {
         order: true,
         customer: true,
+        approvedBy: { select: { id: true, name: true } },
         items: {
           include: {
-            orderItem: {
-              include: {
-                product: true,
-              },
-            },
+            orderItem: { include: { product: true, variant: true } },
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
@@ -30,39 +32,50 @@ export const returnRoutes = new Elysia({
       include: {
         order: true,
         customer: true,
+        approvedBy: true,
         items: {
           include: {
-            orderItem: {
-              include: {
-                product: true,
-              },
-            },
+            orderItem: { include: { product: true, variant: true } },
           },
         },
       },
     });
-    if (!returnData) { set.status = 404; return "Return record not found"; }return returnData;
+    if (!returnData) {
+      set.status = 404;
+      return { message: "Return record not found" };
+    }
+    return returnData;
   })
   .post(
     "/",
     async ({ body, set }) => {
       const returnNumber = `RET-${Date.now()}`;
 
-      set.status = 201;
-      return prisma.$transaction(async (tx: any) => {
-        const returnRecord = await tx.return.create({
+      const returnRecord = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: body.orderId },
+          select: { tenantId: true, storeId: true },
+        });
+
+        if (!order?.storeId) {
+          throw new Error("Order store is required for stock return");
+        }
+
+        const created = await tx.return.create({
           data: {
             returnNumber,
+            tenantId: body.tenantId,
             orderId: body.orderId,
             customerId: body.customerId,
             totalAmount: body.totalAmount,
             refundMethod: body.refundMethod,
             refundStatus: body.refundStatus || "COMPLETED",
             reason: body.reason,
-            approvedBy: body.approvedBy,
+            approvedById: body.approvedById,
             approvedAt: new Date(),
             items: {
               create: body.items.map((item) => ({
+                tenantId: body.tenantId,
                 orderItemId: item.orderItemId,
                 quantity: item.quantity,
                 refundAmount: item.refundAmount,
@@ -70,64 +83,58 @@ export const returnRoutes = new Elysia({
               })),
             },
           },
+          include: { items: true },
         });
 
-        // Update Order Status if necessary
         await tx.order.update({
           where: { id: body.orderId },
-          data: {
-            status: "REFUNDED",
-          },
+          data: { status: "REFUNDED" },
         });
 
-        // Increase stock for returned items
         for (const item of body.items) {
           const orderItem = await tx.orderItem.findUnique({
             where: { id: item.orderItemId },
           });
 
           if (orderItem) {
-            await tx.product.update({
-              where: { id: orderItem.productId },
-              data: {
-                stockQuantity: {
-                  increment: item.quantity,
-                },
-              },
+            await adjustInventory(tx, {
+              tenantId: body.tenantId,
+              storeId: order.storeId,
+              productId: orderItem.productId,
+              variantId: orderItem.variantId,
+              quantityDelta: item.quantity,
+              userId: body.approvedById,
+              type: "RETURN_IN",
+              referenceId: created.id,
+              referenceType: "Return",
             });
 
-            // Mark order item as returned
             await tx.orderItem.update({
               where: { id: item.orderItemId },
               data: {
                 isReturned: true,
-                returnedQuantity: {
-                  increment: item.quantity,
-                },
+                returnedQuantity: { increment: item.quantity },
               },
             });
           }
         }
 
-        return returnRecord;
+        return created;
       });
+
+      set.status = 201;
+      return returnRecord;
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         orderId: t.String(),
         customerId: t.Optional(t.String()),
         totalAmount: t.Number(),
-        refundMethod: t.Enum({
-          CASH: "CASH",
-          KBZ_PAY: "KBZ_PAY",
-          CB_PAY: "CB_PAY",
-          WAVE_PAY: "WAVE_PAY",
-          CARD: "CARD",
-          MIXED_PAYMENT: "MIXED_PAYMENT",
-        }),
+        refundMethod: paymentMethodSchema,
         refundStatus: t.Optional(t.String()),
         reason: t.String(),
-        approvedBy: t.String(),
+        approvedById: t.String(),
         items: t.Array(
           t.Object({
             orderItemId: t.String(),
@@ -140,7 +147,5 @@ export const returnRoutes = new Elysia({
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.return.delete({
-      where: { id: params.id },
-    });
+    return prisma.return.delete({ where: { id: params.id } });
   });

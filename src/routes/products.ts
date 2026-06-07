@@ -1,29 +1,43 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { adjustInventory } from "../lib/inventory";
+
+function slugify(name: string) {
+  return name.toLowerCase().replace(/\s+/g, "-");
+}
 
 export const productRoutes = new Elysia({
   prefix: "/products",
 })
-  .get("/", async ({ query }) => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.product.findMany({
       where: {
-        storeId: (query.storeId as string) || undefined,
+        tenantId,
+        deletedAt: null,
+        ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       },
       include: {
         category: true,
         supplier: true,
-        // variants: true,
-        variantsOption: true,
+        variants: true,
+        inventories: query.storeId
+          ? { where: { storeId: query.storeId } }
+          : true,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
   })
-  .get("/barcode/:barcode", async ({ params, set }) => {
-    const product = await prisma.product.findUnique({
-      where: { barcode: params.barcode },
-      include: { category: true, supplier: true, variantsOption: true },
+  .get("/barcode/:barcode", async ({ params, query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
+    const product = await prisma.product.findFirst({
+      where: { tenantId, barcode: params.barcode, deletedAt: null },
+      include: { category: true, supplier: true, variants: true },
     });
     if (!product) {
       set.status = 404;
@@ -33,14 +47,18 @@ export const productRoutes = new Elysia({
   })
   .get("/:id", async ({ params, set }) => {
     const product = await prisma.product.findUnique({
-      where: {
-        id: params.id,
+      where: { id: params.id },
+      include: {
+        category: true,
+        supplier: true,
+        variants: true,
+        inventories: { include: { store: true } },
+        priceHistory: { take: 10, orderBy: { changedAt: "desc" } },
       },
-      include: { category: true, supplier: true, variantsOption: true },
     });
     if (!product) {
       set.status = 404;
-      return "Product not found";
+      return { message: "Product not found" };
     }
     return product;
   })
@@ -49,20 +67,19 @@ export const productRoutes = new Elysia({
     async ({ body, set }) => {
       let categoryId = body.categoryId;
 
-      // Auto-create category if name is provided instead of ID
       if (!categoryId && body.categoryName) {
         let category = await prisma.category.findFirst({
           where: {
-            slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
-            storeId: body.storeId || null,
+            tenantId: body.tenantId,
+            slug: slugify(body.categoryName),
           },
         });
         if (!category) {
           category = await prisma.category.create({
             data: {
+              tenantId: body.tenantId,
               name: body.categoryName,
-              slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
-              storeId: body.storeId,
+              slug: slugify(body.categoryName),
             },
           });
         }
@@ -71,32 +88,65 @@ export const productRoutes = new Elysia({
 
       if (!categoryId) {
         set.status = 400;
-        return { error: "Category ID or Name is required" };
+        return { message: "Category ID or Name is required" };
       }
 
       set.status = 201;
-      return prisma.product.create({
-        data: {
-          sku: body.sku,
-          barcode: body.barcode,
-          name: body.name,
-          description: body.description,
-          brand: body.brand,
-          costPrice: body.costPrice,
-          sellingPrice: body.sellingPrice,
-          stockQuantity: body.stockQuantity,
-          categoryId: categoryId,
-          supplierId: body.supplierId,
-          manufacturingDate: body.manufacturingDate,
-          expiryDate: body.expiryDate,
-          storeId: body.storeId,
-          variants: body.variants,
-          // variantsOption: body. ,
-        },
+      return prisma.$transaction(async (tx) => {
+        const product = await tx.product.create({
+          data: {
+            tenantId: body.tenantId,
+            sku: body.sku,
+            barcode: body.barcode,
+            name: body.name,
+            description: body.description,
+            brand: body.brand,
+            costPrice: body.costPrice,
+            sellingPrice: body.sellingPrice,
+            categoryId,
+            supplierId: body.supplierId,
+            manufacturingDate: body.manufacturingDate,
+            expiryDate: body.expiryDate,
+            variants: body.variants
+              ? {
+                  create: body.variants.map((v) => ({
+                    tenantId: body.tenantId,
+                    name: v.name,
+                    sku: v.sku,
+                    barcode: v.barcode,
+                    price: v.price,
+                    costPrice: v.costPrice,
+                    color: v.color,
+                    size: v.size,
+                    weight: v.weight,
+                    isActive: v.isActive ?? true,
+                  })),
+                }
+              : undefined,
+          },
+          include: { variants: true },
+        });
+
+        if (body.storeId && body.initialStock && body.initialStock > 0) {
+          await adjustInventory(tx, {
+            tenantId: body.tenantId,
+            storeId: body.storeId,
+            productId: product.id,
+            quantityDelta: body.initialStock,
+            userId: body.userId || body.tenantId,
+            type: "OPENING_STOCK",
+            referenceId: product.id,
+            referenceType: "Product",
+            reason: "Initial stock on product creation",
+          });
+        }
+
+        return product;
       });
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         sku: t.String(),
         barcode: t.Optional(t.String()),
         name: t.String(),
@@ -104,28 +154,26 @@ export const productRoutes = new Elysia({
         brand: t.Optional(t.String()),
         costPrice: t.Number(),
         sellingPrice: t.Number(),
-        stockQuantity: t.Integer(),
         categoryId: t.Optional(t.String()),
         categoryName: t.Optional(t.String()),
         manufacturingDate: t.Optional(t.Date()),
         expiryDate: t.Optional(t.Date()),
         supplierId: t.Optional(t.String()),
-        storeId: t.String(),
+        storeId: t.Optional(t.String()),
+        initialStock: t.Optional(t.Integer()),
+        userId: t.Optional(t.String()),
         variants: t.Optional(
           t.Array(
             t.Object({
               name: t.String(),
               price: t.Number(),
-              stockQuantity: t.Integer(),
               color: t.Optional(t.String()),
               size: t.Optional(t.String()),
               weight: t.Optional(t.Number()),
-              unitPrice: t.Number(),
               costPrice: t.Number(),
-              isActive: t.Boolean(),
+              isActive: t.Optional(t.Boolean()),
               sku: t.String(),
               barcode: t.Optional(t.String()),
-              storeId: t.String(),
             }),
           ),
         ),
@@ -140,22 +188,21 @@ export const productRoutes = new Elysia({
       if (!categoryId && body.categoryName) {
         const existingProduct = await prisma.product.findUnique({
           where: { id: params.id },
-          select: { storeId: true },
+          select: { tenantId: true },
         });
-        const storeId = existingProduct?.storeId || null;
 
         let category = await prisma.category.findFirst({
           where: {
-            slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
-            storeId: storeId,
+            tenantId: existingProduct!.tenantId,
+            slug: slugify(body.categoryName),
           },
         });
         if (!category) {
           category = await prisma.category.create({
             data: {
+              tenantId: existingProduct!.tenantId,
               name: body.categoryName,
-              slug: body.categoryName.toLowerCase().replace(/\s+/g, "-"),
-              storeId: storeId,
+              slug: slugify(body.categoryName),
             },
           });
         }
@@ -172,11 +219,11 @@ export const productRoutes = new Elysia({
           brand: body.brand,
           costPrice: body.costPrice,
           sellingPrice: body.sellingPrice,
-          stockQuantity: body.stockQuantity,
-          categoryId: categoryId,
+          categoryId,
           supplierId: body.supplierId,
           manufacturingDate: body.manufacturingDate,
           expiryDate: body.expiryDate,
+          isActive: body.isActive,
         },
       });
     },
@@ -190,18 +237,19 @@ export const productRoutes = new Elysia({
           brand: t.Optional(t.String()),
           costPrice: t.Number(),
           sellingPrice: t.Number(),
-          stockQuantity: t.Integer(),
           categoryId: t.Optional(t.String()),
           categoryName: t.Optional(t.String()),
           manufacturingDate: t.Optional(t.Date()),
           expiryDate: t.Optional(t.Date()),
           supplierId: t.Optional(t.String()),
+          isActive: t.Optional(t.Boolean()),
         }),
       ),
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.product.delete({
+    return prisma.product.update({
       where: { id: params.id },
+      data: { deletedAt: new Date(), isActive: false },
     });
   });

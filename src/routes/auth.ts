@@ -1,7 +1,41 @@
 import { Elysia, t } from "elysia";
 import bcrypt from "bcryptjs";
-import prisma from "../lib/prisma";
+import { Permission } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import { jwt } from "@elysiajs/jwt";
+
+const userSelect = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  tenantId: true,
+  userPermissions: { select: { permission: true } },
+  stores: { include: { store: true } },
+  tenant: { select: { id: true, code: true, name: true } },
+} as const;
+
+function formatUserResponse(user: {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string;
+  tenantId: string;
+  userPermissions: { permission: Permission }[];
+  stores: { store: unknown }[];
+  tenant: { id: string; code: string; name: string };
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    tenantId: user.tenantId,
+    tenant: user.tenant,
+    permissions: user.userPermissions.map((p) => p.permission),
+    stores: user.stores.map((s) => s.store),
+  };
+}
 
 export const authRoutes = new Elysia({
   prefix: "/auth",
@@ -10,15 +44,15 @@ export const authRoutes = new Elysia({
     jwt({
       name: "jwt",
       secret: process.env.JWT_SECRET!,
-    })
+    }),
   )
   .post(
     "/register",
     async ({ body, jwt, set }) => {
-      const existingUser = await prisma.user.findUnique({
-        where: {
-          email: body.email,
-        },
+      const emailLower = body.email.toLowerCase().trim();
+
+      const existingUser = await prisma.user.findFirst({
+        where: { email: emailLower, deletedAt: null },
       });
 
       if (existingUser) {
@@ -27,57 +61,57 @@ export const authRoutes = new Elysia({
       }
 
       const hashedPassword = await bcrypt.hash(body.password, 10);
+      const tenantCode = body.tenantCode || `TNT-${Date.now()}`;
 
-      const emailLower = body.email.toLowerCase().trim();
-      const user = await prisma.user.create({
-        data: {
-          username: emailLower,
-          email: emailLower,
-          passwordHash: hashedPassword,
-          name: body.name,
-          role: "ADMIN",
-          stores: {
-            create: [
-              {
-                store: {
-                  create: {
-                    code: `HQ-${Date.now()}`,
-                    name: `${body.name}'s Store`,
-                  }
-                },
-                isPrimary: true
-              }
-            ]
-          }
-        },
-        include: {
-          stores: {
-            include: {
-              store: true
-            }
-          }
-        }
+      const user = await prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: {
+            code: tenantCode,
+            name: body.tenantName || `${body.name}'s Organization`,
+            email: emailLower,
+          },
+        });
+
+        const store = await tx.store.create({
+          data: {
+            tenantId: tenant.id,
+            code: `HQ-${Date.now()}`,
+            name: `${body.name}'s Store`,
+          },
+        });
+
+        return tx.user.create({
+          data: {
+            tenantId: tenant.id,
+            username: emailLower,
+            email: emailLower,
+            passwordHash: hashedPassword,
+            name: body.name,
+            role: "ADMIN",
+            userPermissions: {
+              create: Object.values(Permission).map((permission) => ({
+                permission,
+              })),
+            },
+            stores: {
+              create: { storeId: store.id, isPrimary: true },
+            },
+          },
+          select: userSelect,
+        });
       });
 
-      const token = await jwt.sign({
-        id: user.id,
-      });
+      const token = await jwt.sign({ id: user.id, tenantId: user.tenantId });
 
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions,
-        stores: user.stores.map((s: any) => s.store),
-        token,
-      };
+      return { ...formatUserResponse(user), token };
     },
     {
       body: t.Object({
         name: t.String(),
         email: t.String(),
         password: t.String(),
+        tenantName: t.Optional(t.String()),
+        tenantCode: t.Optional(t.String()),
       }),
     },
   )
@@ -85,104 +119,80 @@ export const authRoutes = new Elysia({
     "/login",
     async ({ body, jwt, set }) => {
       const emailLower = body.email.toLowerCase().trim();
-      console.log(`[AUTH] Login attempt for: ${emailLower}`);
-      
-      const user = await prisma.user.findUnique({
+
+      const user = await prisma.user.findFirst({
         where: {
           email: emailLower,
+          deletedAt: null,
+          isActive: true,
+          ...(body.tenantCode
+            ? { tenant: { code: body.tenantCode } }
+            : {}),
         },
-        include: {
-          stores: {
-            include: {
-              store: true
-            }
-          }
-        }
+        select: userSelect,
       });
 
       if (!user) {
-        console.log(`[AUTH] User not found: ${emailLower}`);
         set.status = 400;
         return { message: "Invalid credentials" };
       }
+
+      const fullUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { passwordHash: true },
+      });
 
       const validPassword = await bcrypt.compare(
         body.password,
-        user.passwordHash,
+        fullUser!.passwordHash,
       );
 
       if (!validPassword) {
-        console.log(`[AUTH] Password mismatch for: ${emailLower}`);
         set.status = 400;
         return { message: "Invalid credentials" };
       }
 
-      console.log(`[AUTH] Login successful for: ${emailLower} (${user.role})`);
-
-      const token = await jwt.sign({
-        id: user.id,
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
       });
 
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions,
-        stores: user.stores.map((s: any) => s.store),
-        token,
-      };
+      const token = await jwt.sign({ id: user.id, tenantId: user.tenantId });
+
+      return { ...formatUserResponse(user), token };
     },
     {
       body: t.Object({
         email: t.String(),
         password: t.String(),
+        tenantCode: t.Optional(t.String()),
       }),
     },
   )
-  .get(
-    "/me",
-    async ({ jwt, set, headers }) => {
-      const authHeader = headers["authorization"];
-      if (!authHeader) {
-        set.status = 401;
-        return { message: "Unauthorized" };
-      }
+  .get("/me", async ({ jwt, set, headers }) => {
+    const authHeader = headers["authorization"];
+    if (!authHeader) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
 
-      const token = authHeader.split(" ")[1];
-      const payload = await jwt.verify(token);
+    const token = authHeader.split(" ")[1];
+    const payload = await jwt.verify(token);
 
-      if (!payload) {
-        set.status = 401;
-        return { message: "Unauthorized" };
-      }
+    if (!payload) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
 
-      const user = await prisma.user.findUnique({
-        where: {
-          id: payload.id as string,
-        },
-        include: {
-          stores: {
-            include: {
-              store: true,
-            },
-          },
-        },
-      });
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id as string },
+      select: userSelect,
+    });
 
-      if (!user) {
-        set.status = 404;
-        return { message: "User not found" };
-      }
+    if (!user) {
+      set.status = 404;
+      return { message: "User not found" };
+    }
 
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions,
-        stores: user.stores.map((s: any) => s.store),
-        token, // Keep the same token
-      };
-    },
-  );
+    return { ...formatUserResponse(user), token };
+  });

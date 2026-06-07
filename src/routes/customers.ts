@@ -1,14 +1,19 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { customerTierSchema } from "../lib/schemas";
 
 export const customerRoutes = new Elysia({
   prefix: "/customers",
 })
-  .get("/", async () => {
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
     return prisma.customer.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
+      where: { tenantId, deletedAt: null },
+      include: { wallet: true },
+      orderBy: { createdAt: "desc" },
     });
   })
   .get("/:id", async ({ params, set }) => {
@@ -16,11 +21,13 @@ export const customerRoutes = new Elysia({
       where: { id: params.id },
       include: {
         orders: true,
+        wallet: { include: { transactions: { take: 20, orderBy: { createdAt: "desc" } } } },
+        loyaltyTransactions: { take: 20, orderBy: { createdAt: "desc" } },
       },
     });
     if (!customer) {
       set.status = 404;
-      return "Customer not found";
+      return { message: "Customer not found" };
     }
     return customer;
   })
@@ -30,13 +37,22 @@ export const customerRoutes = new Elysia({
       set.status = 201;
       return prisma.customer.create({
         data: {
-          ...body,
+          tenantId: body.tenantId,
           code: body.code || `CUST-${Date.now()}`,
+          name: body.name,
+          phone: body.phone,
+          email: body.email,
+          address: body.address,
+          dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : undefined,
+          gender: body.gender,
+          debtAmount: body.debtAmount,
+          tier: body.tier,
         },
       });
     },
     {
       body: t.Object({
+        tenantId: t.String(),
         code: t.Optional(t.String()),
         name: t.String(),
         phone: t.Optional(t.String()),
@@ -45,7 +61,7 @@ export const customerRoutes = new Elysia({
         dateOfBirth: t.Optional(t.String()),
         debtAmount: t.Optional(t.Number()),
         gender: t.Optional(t.String()),
-        tier: t.Optional(t.String()),
+        tier: t.Optional(customerTierSchema),
       }),
     },
   )
@@ -54,7 +70,10 @@ export const customerRoutes = new Elysia({
     async ({ params, body }) => {
       return prisma.customer.update({
         where: { id: params.id },
-        data: body,
+        data: {
+          ...body,
+          dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : undefined,
+        },
       });
     },
     {
@@ -70,14 +89,15 @@ export const customerRoutes = new Elysia({
           gender: t.Optional(t.String()),
           loyaltyPoints: t.Optional(t.Integer()),
           totalSpent: t.Optional(t.Number()),
-          tier: t.Optional(t.String()),
+          tier: t.Optional(customerTierSchema),
           isActive: t.Optional(t.Boolean()),
         }),
       ),
     },
   )
   .delete("/:id", async ({ params }) => {
-    return prisma.customer.delete({
+    return prisma.customer.update({
       where: { id: params.id },
+      data: { deletedAt: new Date(), isActive: false },
     });
   });

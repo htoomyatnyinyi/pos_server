@@ -1,83 +1,75 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { requireTenantId } from "../lib/tenant";
+import { adjustInventory } from "../lib/inventory";
+import { movementTypeSchema } from "../lib/schemas";
 
 export const inventoryRoutes = new Elysia({
   prefix: "/inventory",
 })
+  .get("/", async ({ query, set }) => {
+    const tenantId = requireTenantId({ query, set });
+    if (!tenantId) return { message: "tenantId is required" };
+
+    return prisma.inventory.findMany({
+      where: {
+        tenantId,
+        ...(query.storeId ? { storeId: query.storeId } : {}),
+        ...(query.productId ? { productId: query.productId } : {}),
+      },
+      include: { product: true, variant: true, store: true },
+      orderBy: { updatedAt: "desc" },
+    });
+  })
   .group("/movements", (app) =>
     app
-      .get("/", async ({ query }) => {
+      .get("/", async ({ query, set }) => {
+        const tenantId = requireTenantId({ query, set });
+        if (!tenantId) return { message: "tenantId is required" };
+
         return prisma.stockMovement.findMany({
           where: {
-            storeId: (query.storeId as string) || undefined,
+            tenantId,
+            ...(query.storeId ? { storeId: query.storeId } : {}),
           },
-          include: {
-            product: true,
-            user: true,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
+          include: { product: true, variant: true, user: true, store: true },
+          orderBy: { createdAt: "desc" },
         });
       })
       .post(
         "/",
         async ({ body, set }) => {
-          // 1. Get current stock
-          const product = await prisma.product.findUnique({
-            where: { id: body.productId },
-          });
-
-          if (!product) {
-            set.status = 404;
-            return "Product not found";
+          if (!body.storeId) {
+            set.status = 400;
+            return { message: "storeId is required" };
           }
-          const previousStock = product.stockQuantity;
-          const newStock = previousStock + body.quantity;
 
-          // 2. Create movement and update product stock in a transaction
-          return prisma.$transaction(async (tx) => {
-            const movement = await tx.stockMovement.create({
-              data: {
-                productId: body.productId,
-                quantity: body.quantity,
-                previousStock,
-                newStock,
-                type: body.type,
-                referenceId: body.referenceId,
-                referenceType: body.referenceType,
-                reason: body.reason,
-                userId: body.userId,
-              },
-            });
+          const result = await prisma.$transaction((tx) =>
+            adjustInventory(tx, {
+              tenantId: body.tenantId,
+              storeId: body.storeId!,
+              productId: body.productId,
+              variantId: body.variantId,
+              quantityDelta: body.quantity,
+              userId: body.userId,
+              type: body.type,
+              referenceId: body.referenceId,
+              referenceType: body.referenceType,
+              reason: body.reason,
+            }),
+          );
 
-            await tx.product.update({
-              where: { id: body.productId },
-              data: {
-                stockQuantity: newStock,
-              },
-            });
-
-            return movement;
-          });
+          set.status = 201;
+          return result.movement;
         },
         {
           body: t.Object({
+            tenantId: t.String(),
+            storeId: t.Optional(t.String()),
             productId: t.String(),
+            variantId: t.Optional(t.String()),
             quantity: t.Integer(),
-            type: t.Enum({
-              PURCHASE: "PURCHASE",
-              SALE: "SALE",
-              RETURN_IN: "RETURN_IN",
-              RETURN_OUT: "RETURN_OUT",
-              ADJUSTMENT: "ADJUSTMENT",
-              DAMAGE: "DAMAGE",
-              EXPIRED: "EXPIRED",
-              TRANSFER_IN: "TRANSFER_IN",
-              TRANSFER_OUT: "TRANSFER_OUT",
-              OPENING_STOCK: "OPENING_STOCK",
-              COUNTING: "COUNTING",
-            }),
+            type: movementTypeSchema,
             referenceId: t.String(),
             referenceType: t.String(),
             reason: t.Optional(t.String()),
@@ -88,16 +80,17 @@ export const inventoryRoutes = new Elysia({
   )
   .group("/counts", (app) =>
     app
-      .get("/", async () => {
+      .get("/", async ({ query, set }) => {
+        const tenantId = requireTenantId({ query, set });
+        if (!tenantId) return { message: "tenantId is required" };
+
         return prisma.inventoryCount.findMany({
-          include: {
-            store: true,
-            created: true,
-            approved: true,
+          where: {
+            tenantId,
+            ...(query.storeId ? { storeId: query.storeId } : {}),
           },
-          orderBy: {
-            createdAt: "desc",
-          },
+          include: { store: true, created: true, approved: true, items: true },
+          orderBy: { createdAt: "desc" },
         });
       })
       .post(
@@ -108,12 +101,15 @@ export const inventoryRoutes = new Elysia({
           return prisma.inventoryCount.create({
             data: {
               countNumber,
+              tenantId: body.tenantId,
               storeId: body.storeId,
               scheduledDate: new Date(body.scheduledDate),
               createdBy: body.userId,
               items: {
                 create: body.items.map((item) => ({
+                  tenantId: body.tenantId,
                   productId: item.productId,
+                  variantId: item.variantId,
                   systemQuantity: item.systemQuantity,
                   countedQuantity: item.countedQuantity,
                   variance: item.countedQuantity - item.systemQuantity,
@@ -121,19 +117,19 @@ export const inventoryRoutes = new Elysia({
                 })),
               },
             },
-            include: {
-              items: true,
-            },
+            include: { items: true },
           });
         },
         {
           body: t.Object({
+            tenantId: t.String(),
             storeId: t.Optional(t.String()),
             scheduledDate: t.String(),
             userId: t.String(),
             items: t.Array(
               t.Object({
                 productId: t.String(),
+                variantId: t.Optional(t.String()),
                 systemQuantity: t.Integer(),
                 countedQuantity: t.Integer(),
                 reason: t.Optional(t.String()),
