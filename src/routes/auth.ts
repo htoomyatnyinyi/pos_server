@@ -10,7 +10,7 @@ export const authRoutes = new Elysia({
     jwt({
       name: "jwt",
       secret: process.env.JWT_SECRET!,
-    })
+    }),
   )
   .post(
     "/register",
@@ -43,24 +43,26 @@ export const authRoutes = new Elysia({
                   create: {
                     code: `HQ-${Date.now()}`,
                     name: `${body.name}'s Store`,
-                  }
+                  },
                 },
-                isPrimary: true
-              }
-            ]
-          }
+                isPrimary: true,
+              },
+            ],
+          },
         },
         include: {
           stores: {
             include: {
-              store: true
-            }
-          }
-        }
+              store: true,
+            },
+          },
+        },
       });
 
       const token = await jwt.sign({
         id: user.id,
+        premium: user.premium,
+        trial: user.trial,
       });
 
       return {
@@ -69,6 +71,8 @@ export const authRoutes = new Elysia({
         email: user.email,
         role: user.role,
         permissions: user.permissions,
+        premium: user.premium,
+        trial: user.trial,
         stores: user.stores.map((s: any) => s.store),
         token,
       };
@@ -86,7 +90,7 @@ export const authRoutes = new Elysia({
     async ({ body, jwt, set }) => {
       const emailLower = body.email.toLowerCase().trim();
       console.log(`[AUTH] Login attempt for: ${emailLower}`);
-      
+
       const user = await prisma.user.findUnique({
         where: {
           email: emailLower,
@@ -94,10 +98,10 @@ export const authRoutes = new Elysia({
         include: {
           stores: {
             include: {
-              store: true
-            }
-          }
-        }
+              store: true,
+            },
+          },
+        },
       });
 
       if (!user) {
@@ -121,6 +125,8 @@ export const authRoutes = new Elysia({
 
       const token = await jwt.sign({
         id: user.id,
+        premium: user.premium,
+        trial: user.trial,
       });
 
       return {
@@ -131,6 +137,8 @@ export const authRoutes = new Elysia({
         permissions: user.permissions,
         stores: user.stores.map((s: any) => s.store),
         token,
+        premium: user.premium,
+        trial: user.trial,
       };
     },
     {
@@ -140,49 +148,46 @@ export const authRoutes = new Elysia({
       }),
     },
   )
-  .get(
-    "/me",
-    async ({ jwt, set, headers }) => {
-      const authHeader = headers["authorization"];
-      if (!authHeader) {
-        set.status = 401;
-        return { message: "Unauthorized" };
-      }
+  .get("/me", async ({ jwt, set, headers }) => {
+    const authHeader = headers["authorization"];
+    if (!authHeader) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
 
-      const token = authHeader.split(" ")[1];
-      const payload = await jwt.verify(token);
+    const token = authHeader.split(" ")[1];
+    const payload = await jwt.verify(token);
 
-      if (!payload) {
-        set.status = 401;
-        return { message: "Unauthorized" };
-      }
+    if (!payload) {
+      set.status = 401;
+      return { message: "Unauthorized" };
+    }
 
-      const user = await prisma.user.findUnique({
-        where: {
-          id: payload.id as string,
-        },
-        include: {
-          stores: {
-            include: {
-              store: true,
-            },
+    const user = await prisma.user.findUnique({
+      where: {
+        id: payload.id as string,
+      },
+      include: {
+        stores: {
+          include: {
+            store: true,
           },
         },
-      });
+      },
+    });
 
-      if (!user) {
-        set.status = 404;
-        return { message: "User not found" };
-      }
+    if (!user) {
+      set.status = 404;
+      return { message: "User not found" };
+    }
 
-      return {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        permissions: user.permissions,
-        stores: user.stores.map((s: any) => s.store),
-        token, // Keep the same token
-      };
-    },
-  );
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions,
+      stores: user.stores.map((s: any) => s.store),
+      token, // Keep the same token
+    };
+  });

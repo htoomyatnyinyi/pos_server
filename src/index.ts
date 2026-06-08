@@ -41,6 +41,7 @@ const app = new Elysia()
       secret: process.env.JWT_SECRET!,
     }),
   )
+
   .onError(({ code, error, set }) => {
     if (code === "VALIDATION") {
       set.status = 400;
