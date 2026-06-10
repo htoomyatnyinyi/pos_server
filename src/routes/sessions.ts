@@ -39,6 +39,7 @@ export const sessionRoutes = new Elysia({
   .post(
     "/open",
     async ({ body, set }) => {
+      console.log(body, "body");
       let storeId = body.storeId;
 
       if (!storeId) {
