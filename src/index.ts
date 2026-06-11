@@ -3,6 +3,12 @@ import { Prisma } from "@prisma/client";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
+
+// Middlewares
+import { platformAuthMiddleware } from "../middleware/platformAuthMiddleware";
+import { tenantAuthMiddleware } from "../middleware/tenantAuthMiddleware";
+
+// Route Imports
 import { authRoutes } from "./routes/auth";
 import { tenantRoutes } from "./routes/tenants";
 import { productRoutes } from "./routes/products";
@@ -30,6 +36,7 @@ import { walletRoutes } from "./routes/wallets";
 import { supplierPaymentRoutes } from "./routes/supplier-payments";
 import { apiKeyRoutes } from "./routes/api-keys";
 import { webhookRoutes } from "./routes/webhooks";
+import { platformAuthRoutes } from "./routes/platform-auth";
 
 const app = new Elysia()
   .use(swagger())
@@ -82,42 +89,213 @@ const app = new Elysia()
     set.status = 500;
     return {
       success: false,
-      message: error?.message || "Internal Server Error",
+      message:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : "Something went wrong",
     };
   })
   .get("/", () => ({
     message: "POS API Running",
   }))
-  .group("/api", (app) =>
-    app
-      .use(authRoutes)
-      .use(tenantRoutes)
-      .use(productRoutes)
-      .use(orderRoutes)
-      .use(storeRoutes)
-      .use(categoryRoutes)
-      .use(supplierRoutes)
-      .use(customerRoutes)
-      .use(sessionRoutes)
-      .use(inventoryRoutes)
-      .use(staffRoutes)
-      .use(paymentRoutes)
-      .use(returnRoutes)
-      .use(purchaseOrderRoutes)
-      .use(stockTransferRoutes)
-      .use(promotionRoutes)
-      .use(auditLogRoutes)
-      .use(storeSettingRoutes)
-      .use(notificationRoutes)
-      .use(taxRateRoutes)
-      .use(expenseRoutes)
-      .use(cashRegisterRoutes)
-      .use(giftCardRoutes)
-      .use(walletRoutes)
-      .use(supplierPaymentRoutes)
-      .use(apiKeyRoutes)
-      .use(webhookRoutes),
+
+  // စနစ်တစ်ခုလုံး၏ ပင်မ API Group
+  .group("/api", (apiApp) =>
+    apiApp
+      // ၁။ Public Routes (Login / Register များအတွက်) - Middleware မလိုပါ
+      .use(authRoutes) // POST: /api/auth/login, /api/auth/register
+      .use(platformAuthRoutes) // POST: /api/platform/auth/login (အသစ်)
+
+      // ၂။ Platform Group - Super Admin သီးသန့်လမ်းကြောင်းများ (Inline ပုံစံပြောင်းလဲထားသည်)
+      .group("/platform", (platformApp) =>
+        platformApp
+          .use(platformAuthMiddleware)
+          .use(tenantRoutes)
+          .use(auditLogRoutes),
+      )
+
+      // ၃။ Tenant Group - ဆိုင်ခွဲများအတွက် လမ်းကြောင်းများ (Inline ပုံစံပြောင်းလဲထားသည်)
+      .group("/tenant", (tenantApp) =>
+        tenantApp
+          .use(tenantAuthMiddleware)
+          .use(productRoutes)
+          .use(orderRoutes)
+          .use(storeRoutes)
+          .use(categoryRoutes)
+          .use(supplierRoutes)
+          .use(customerRoutes)
+          .use(sessionRoutes)
+          .use(inventoryRoutes)
+          .use(staffRoutes)
+          .use(paymentRoutes)
+          .use(returnRoutes)
+          .use(purchaseOrderRoutes)
+          .use(stockTransferRoutes)
+          .use(promotionRoutes)
+          .use(storeSettingRoutes)
+          .use(notificationRoutes)
+          .use(taxRateRoutes)
+          .use(expenseRoutes)
+          .use(cashRegisterRoutes)
+          .use(giftCardRoutes)
+          .use(walletRoutes)
+          .use(supplierPaymentRoutes)
+          .use(apiKeyRoutes)
+          .use(webhookRoutes),
+      ),
   )
   .listen(6060);
 
 console.log(`🦊 POS API running at http://localhost:6060`);
+
+// import { Elysia } from "elysia";
+// import { Prisma } from "@prisma/client";
+// import { cors } from "@elysiajs/cors";
+// import { jwt } from "@elysiajs/jwt";
+// import { swagger } from "@elysiajs/swagger";
+// import { authRoutes } from "./routes/auth";
+// import { tenantRoutes } from "./routes/tenants";
+// import { productRoutes } from "./routes/products";
+// import { orderRoutes } from "./routes/orders";
+// import { storeRoutes } from "./routes/stores";
+// import { categoryRoutes } from "./routes/categories";
+// import { supplierRoutes } from "./routes/suppliers";
+// import { customerRoutes } from "./routes/customers";
+// import { sessionRoutes } from "./routes/sessions";
+// import { inventoryRoutes } from "./routes/inventory";
+// import { staffRoutes } from "./routes/staff";
+// import { paymentRoutes } from "./routes/payments";
+// import { returnRoutes } from "./routes/returns";
+// import { purchaseOrderRoutes } from "./routes/purchase-orders";
+// import { stockTransferRoutes } from "./routes/stock-transfers";
+// import { promotionRoutes } from "./routes/promotions";
+// import { auditLogRoutes } from "./routes/audit-logs";
+// import { storeSettingRoutes } from "./routes/store-settings";
+// import { notificationRoutes } from "./routes/notifications";
+// import { taxRateRoutes } from "./routes/tax-rates";
+// import { expenseRoutes } from "./routes/expenses";
+// import { cashRegisterRoutes } from "./routes/cash-registers";
+// import { giftCardRoutes } from "./routes/gift-cards";
+// import { walletRoutes } from "./routes/wallets";
+// import { supplierPaymentRoutes } from "./routes/supplier-payments";
+// import { apiKeyRoutes } from "./routes/api-keys";
+// import { webhookRoutes } from "./routes/webhooks";
+// import { platformAuthMiddleware } from "../middleware/platformAuthMiddleware";
+// import { tenantAuthMiddleware } from "../middleware/tenantAuthMiddleware";
+
+// // ၁။ Platform Group (Super Admin အတွက်သာ)
+// const platformGroup = (app: Elysia) =>
+//   app
+//     .use(platformAuthMiddleware) // Super Admin ဟုတ်မဟုတ် စစ်မယ့် Middleware
+//     .use(tenantRoutes) // Tenant တွေကို စီမံခန့်ခွဲတဲ့လမ်းကြောင်း
+//     .use(auditLogRoutes); // စနစ်တစ်ခုလုံးရဲ့ Log တွေကို ကြည့်ခြင်း
+
+// // ၂။ Tenant Group (ဆိုင်တစ်ဆိုင်ချင်းစီအတွက်)
+// const tenantGroup = (app: Elysia) =>
+//   app
+//     .use(tenantAuthMiddleware) // JWT ကိုစစ်ပြီး tenantId ကို အလိုအလျောက် ထည့်ပေးမယ့် Middleware
+//     .use(productRoutes) // ဒီထဲက route တွေအားလုံးမှာ tenantId ပါပြီးသားဖြစ်သွားမယ်
+//     .use(orderRoutes)
+//     .use(customerRoutes);
+
+// const app = new Elysia()
+//   .use(swagger())
+//   .use(
+//     cors({
+//       origin: ["*"],
+//       allowedHeaders: ["Content-Type", "Authorization"],
+//       methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+//     }),
+//   )
+//   .use(
+//     jwt({
+//       name: "jwt",
+//       secret: process.env.JWT_SECRET!,
+//     }),
+//   )
+//   .onError(({ code, error, set }) => {
+//     if (code === "VALIDATION") {
+//       set.status = 400;
+//       return {
+//         success: false,
+//         message: "Validation failed",
+//         errors: error.all.map((e) => ({
+//           path: e.path,
+//           message: e.message,
+//           expected: e.schema?.type || "unknown",
+//         })),
+//       };
+//     }
+
+//     if (error instanceof Prisma.PrismaClientKnownRequestError) {
+//       if (error.code === "P2002") {
+//         set.status = 409;
+//         return {
+//           success: false,
+//           message: `Unique constraint failed: ${error.meta?.target || "Unknown field"}`,
+//           code: "CONFLICT",
+//         };
+//       }
+//       if (error.code === "P2025") {
+//         set.status = 404;
+//         return {
+//           success: false,
+//           message: "Record not found",
+//           code: "NOT_FOUND",
+//         };
+//       }
+//     }
+
+//     set.status = 500;
+//     return {
+//       success: false,
+//       message:
+//         process.env.NODE_ENV === "development"
+//           ? (error as Error).message
+//           : "Something went wrong",
+//     };
+//   })
+
+//   .get("/", () => ({
+//     message: "POS API Running",
+//   }))
+
+//   .group("/api", (app) =>
+//     app
+//       .use(authRoutes)
+//       .use(tenantRoutes)
+//       .use(productRoutes)
+//       .use(orderRoutes)
+//       .use(storeRoutes)
+//       .use(categoryRoutes)
+//       .use(supplierRoutes)
+//       .use(customerRoutes)
+//       .use(sessionRoutes)
+//       .use(inventoryRoutes)
+//       .use(staffRoutes)
+//       .use(paymentRoutes)
+//       .use(returnRoutes)
+//       .use(purchaseOrderRoutes)
+//       .use(stockTransferRoutes)
+//       .use(promotionRoutes)
+//       .use(auditLogRoutes)
+//       .use(storeSettingRoutes)
+//       .use(notificationRoutes)
+//       .use(taxRateRoutes)
+//       .use(expenseRoutes)
+//       .use(cashRegisterRoutes)
+//       .use(giftCardRoutes)
+//       .use(walletRoutes)
+//       .use(supplierPaymentRoutes)
+//       .use(apiKeyRoutes)
+//       .use(webhookRoutes),
+//   )
+//   .group("/api", (app) =>
+//     app
+//       .use(authRoutes) // Login/Register အတွက် (Middleware မလိုပါ)
+//       .group("/platform", platformGroup)
+//       .group("/tenant", tenantGroup),
+//   )
+//   .listen(6060);
+
+// console.log(`🦊 POS API running at http://localhost:6060`);

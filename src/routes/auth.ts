@@ -101,7 +101,11 @@ export const authRoutes = new Elysia({
         });
       });
 
-      const token = await jwt.sign({ id: user.id, tenantId: user.tenantId });
+      const token = await jwt.sign({
+        id: user.id,
+        tenantId: user.tenantId,
+        role: user.role,
+      });
 
       return { ...formatUserResponse(user), token };
     },
@@ -125,9 +129,7 @@ export const authRoutes = new Elysia({
           email: emailLower,
           deletedAt: null,
           isActive: true,
-          ...(body.tenantCode
-            ? { tenant: { code: body.tenantCode } }
-            : {}),
+          ...(body.tenantCode ? { tenant: { code: body.tenantCode } } : {}),
         },
         select: userSelect,
       });
