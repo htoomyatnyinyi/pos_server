@@ -5,7 +5,7 @@ export const platformAuthMiddleware = new Elysia({
   name: "platformAuthMiddleware",
 })
   .use(jwt({ name: "jwt", secret: process.env.JWT_SECRET! }))
-  .derive(async ({ jwt, headers }) => {
+  .derive({ as: "global" }, async ({ jwt, headers }) => {
     const authHeader = headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return {

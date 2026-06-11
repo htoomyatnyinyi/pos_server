@@ -5,8 +5,8 @@ import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
 
 // Middlewares
-import { platformAuthMiddleware } from "../middleware/platformAuthMiddleware";
-import { tenantAuthMiddleware } from "../middleware/tenantAuthMiddleware";
+import { platformAuthMiddleware } from "../middlewares/platformAuthMiddleware";
+import { tenantAuthMiddleware } from "../middlewares/tenantAuthMiddleware";
 
 // Route Imports
 import { authRoutes } from "./routes/auth";
