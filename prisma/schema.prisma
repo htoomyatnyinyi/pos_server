@@ -1000,6 +1000,7 @@ model Expense {
   
   expenseDate DateTime @default(now())
   createdById String
+  deletedAt   DateTime?
   
   tenant      Tenant @relation(fields: [tenantId], references: [id])
   store       Store? @relation(fields: [storeId], references: [id])
@@ -1119,6 +1120,7 @@ model Payment {
   
   referenceNumber   String?
   status            PaymentStatus @default(PAID)
+  deletedAt   DateTime? // <--- ဤ field ကို ထည့်ပါ
   
   processedById     String
   

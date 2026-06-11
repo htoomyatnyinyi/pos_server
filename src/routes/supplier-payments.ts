@@ -1,67 +1,231 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
-import { requireTenantId } from "../lib/tenant";
-import { paymentMethodSchema } from "../lib/schemas";
+import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
+import { PaymentMethod } from "@prisma/client";
 
 export const supplierPaymentRoutes = new Elysia({
   prefix: "/supplier-payments",
 })
-  .get("/", async ({ query, set }) => {
-    const tenantId = requireTenantId({ query, set });
-    if (!tenantId) return { message: "tenantId is required" };
+  // 🔐 Multi-Tenant Authentication Middleware ချိတ်ဆက်ခြင်း
+  .use(tenantAuthMiddleware)
 
-    return prisma.supplierPayment.findMany({
-      where: {
+  /**
+   * 1. GET ALL SUPPLIER PAYMENTS WITH TENANT ISOLATION & PAGINATION
+   */
+  .get(
+    "/",
+    async ({ tenantId, query }) => {
+      const page = query.page ? parseInt(query.page as string) : 1;
+      const limit = query.limit ? parseInt(query.limit as string) : 20;
+      const skip = (page - 1) * limit;
+
+      const whereCondition: any = {
         tenantId,
-        ...(query.supplierId ? { supplierId: query.supplierId } : {}),
-      },
-      include: { supplier: { select: { id: true, name: true, code: true } } },
-      orderBy: { paidAt: "desc" },
-    });
-  })
-  .get("/:id", async ({ params, set }) => {
-    const payment = await prisma.supplierPayment.findUnique({
-      where: { id: params.id },
-      include: { supplier: true },
-    });
-    if (!payment) {
-      set.status = 404;
-      return { message: "Supplier payment not found" };
-    }
-    return payment;
-  })
+        ...(query.supplierId ? { supplierId: query.supplierId as string } : {}),
+        ...(query.paymentMethod
+          ? { paymentMethod: query.paymentMethod as PaymentMethod }
+          : {}),
+      };
+
+      const [total, payments] = await prisma.$transaction([
+        prisma.supplierPayment.count({ where: whereCondition }),
+        prisma.supplierPayment.findMany({
+          where: whereCondition,
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { paidAt: "desc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        payments,
+      };
+    },
+    {
+      query: t.Optional(
+        t.Object({
+          page: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          supplierId: t.Optional(t.String()),
+          paymentMethod: t.Optional(t.String()),
+        }),
+      ),
+    },
+  )
+
+  /**
+   * 2. GET SINGLE SUPPLIER PAYMENT DETAIL BY ID
+   */
+  .get(
+    "/:id",
+    async ({ params: { id }, tenantId, set }) => {
+      const payment = await prisma.supplierPayment.findFirst({
+        // 🚨 လုံခြုံရေးအရ မိမိလုပ်ငန်းပိုင် ငွေချေမှုမှတ်တမ်းကိုသာ ကြည့်ခွင့်ပေးမည်
+        where: { id, tenantId },
+        include: { supplier: true },
+      });
+
+      if (!payment) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Supplier payment voucher not found or access denied.",
+        };
+      }
+
+      return { success: true, payment };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  /**
+   * 3. POST: RECORD NEW SUPPLIER PAYMENT & AUTO-DECREMENT SUPPLIER BALANCE
+   * (လုပ်ငန်းရှင်များသို့ ကြွေးမြီပြန်လည်ပေးဆပ်မှုအား စာရင်းသွင်းပြီး ၎င်းတို့၏လက်ကျန်ကြွေးမြီအား Auto နှုတ်ခြင်း)
+   */
   .post(
     "/",
-    async ({ body, set }) => {
-      set.status = 201;
-      return prisma.$transaction(async (tx) => {
-        const payment = await tx.supplierPayment.create({
+    async ({ body, tenantId, userId, set }) => {
+      // ၁။ ငွေတွက်ချက်မှု မလုပ်မီ အဆိုပါ Supplier သည် မိမိလုပ်ငန်းအောက်တွင် တကယ်ရှိမရှိ အရင်စစ်ဆေးခြင်း
+      const targetSupplier = await prisma.supplier.findFirst({
+        where: { id: body.supplierId, tenantId, deletedAt: null },
+      });
+
+      if (!targetSupplier) {
+        set.status = 400;
+        return {
+          success: false,
+          message:
+            "Transaction failed: Supplier not found or already deactivated.",
+        };
+      }
+
+      // ၂။ ငွေစာရင်းဇယား တိကျသေချာစေရန် Database Atomicity Transaction စတင်ခြင်း
+      const paymentResult = await prisma.$transaction(async (tx) => {
+        // (က) ငွေပေးချေမှုဘောင်ချာအသစ် ဖန်တီးခြင်း
+        const createdPayment = await tx.supplierPayment.create({
           data: {
-            tenantId: body.tenantId,
+            tenantId,
             supplierId: body.supplierId,
             amount: body.amount,
-            paymentMethod: body.paymentMethod,
-            referenceNumber: body.referenceNumber,
-            note: body.note,
+            paymentMethod: body.paymentMethod as PaymentMethod,
+            referenceNumber: body.referenceNumber
+              ? body.referenceNumber.trim()
+              : null,
+            note: body.note ? body.note.trim() : null,
+            paidAt: new Date(),
           },
         });
 
+        // (ခ) Supplier Table ရှိ အဆိုပါ လုပ်ငန်းရှင်၏ လက်ကျန်ကြွေးမြီစာရင်းကို ငွေပေးချေလိုက်သော ပမာဏအတိုင်း နှုတ်ပယ်ခြင်း
         await tx.supplier.update({
           where: { id: body.supplierId },
-          data: { currentBalance: { decrement: body.amount } },
+          data: {
+            currentBalance: { decrement: body.amount },
+          },
         });
 
-        return payment;
+        // (ဂ) စနစ်အတွင်း လုပ်ငန်းစဉ် သမိုင်းမှတ်တမ်း ရေးသွင်းခြင်း (System Audit Logs)
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            action: "CREATE",
+            entity: "SupplierPayment",
+            entityId: createdPayment.id,
+            newData: JSON.parse(JSON.stringify(createdPayment)),
+          },
+        });
+
+        return createdPayment;
       });
+
+      set.status = 201;
+      return {
+        success: true,
+        message:
+          "Supplier payment successfully processed and supplier balance adjusted.",
+        payment: paymentResult,
+      };
     },
     {
       body: t.Object({
-        tenantId: t.String(),
-        supplierId: t.String(),
-        amount: t.Number(),
-        paymentMethod: paymentMethodSchema,
+        supplierId: t.String({ minLength: 1 }),
+        amount: t.Number({ minimum: 0.01 }), // သုည သို့မဟုတ် အနှုတ်ကိန်းများ ငွေလှမ်းချေ၍မရအောင် ကာကွယ်ထားသည်
+        paymentMethod: t.String(), // Schema PaymentMethod Enum နှင့် ကိုက်ညီရမည်
         referenceNumber: t.Optional(t.String()),
         note: t.Optional(t.String()),
       }),
     },
   );
+// import { Elysia, t } from "elysia";
+// import { prisma } from "../lib/prisma";
+// import { requireTenantId } from "../lib/tenant";
+// import { paymentMethodSchema } from "../lib/schemas";
+
+// export const supplierPaymentRoutes = new Elysia({
+//   prefix: "/supplier-payments",
+// })
+//   .get("/", async ({ query, set }) => {
+//     const tenantId = requireTenantId({ query, set });
+//     if (!tenantId) return { message: "tenantId is required" };
+
+//     return prisma.supplierPayment.findMany({
+//       where: {
+//         tenantId,
+//         ...(query.supplierId ? { supplierId: query.supplierId } : {}),
+//       },
+//       include: { supplier: { select: { id: true, name: true, code: true } } },
+//       orderBy: { paidAt: "desc" },
+//     });
+//   })
+//   .get("/:id", async ({ params, set }) => {
+//     const payment = await prisma.supplierPayment.findUnique({
+//       where: { id: params.id },
+//       include: { supplier: true },
+//     });
+//     if (!payment) {
+//       set.status = 404;
+//       return { message: "Supplier payment not found" };
+//     }
+//     return payment;
+//   })
+//   .post(
+//     "/",
+//     async ({ body, set }) => {
+//       set.status = 201;
+//       return prisma.$transaction(async (tx) => {
+//         const payment = await tx.supplierPayment.create({
+//           data: {
+//             tenantId: body.tenantId,
+//             supplierId: body.supplierId,
+//             amount: body.amount,
+//             paymentMethod: body.paymentMethod,
+//             referenceNumber: body.referenceNumber,
+//             note: body.note,
+//           },
+//         });
+
+//         await tx.supplier.update({
+//           where: { id: body.supplierId },
+//           data: { currentBalance: { decrement: body.amount } },
+//         });
+
+//         return payment;
+//       });
+//     },
+//     {
+//       body: t.Object({
+//         tenantId: t.String(),
+//         supplierId: t.String(),
+//         amount: t.Number(),
+//         paymentMethod: paymentMethodSchema,
+//         referenceNumber: t.Optional(t.String()),
+//         note: t.Optional(t.String()),
+//       }),
+//     },
+//   );
