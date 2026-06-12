@@ -1,11 +1,11 @@
 @baseUrl = http://localhost:6060/api
 @authToken = {{login.response.body.token}}
 @userId = {{login.response.body.id}}
+@platformToken = {{platformLogin.response.body.token}}
 
 ### 1. Register a New User (with tenantCode)
 
 # @name register
-
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
@@ -20,7 +20,6 @@ Content-Type: application/json
 ### 2. Login (with optional tenantCode)
 
 # @name login
-
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
@@ -33,49 +32,42 @@ Content-Type: application/json
 ### 2a. Platform Login (for platform-level access)
 
 # @name platformLogin
-
 POST {{baseUrl}}/platform/auth/login
 Content-Type: application/json
 
 {
-  "email": "admin@platform.com",
-  "password": "admin123"
+  "email": "root@minipos-platform.com",
+  "password": "SuperAdmin123!"
 }
 
 ### 2b. Get Current User Info
 
 # @name getMe
-
 GET {{baseUrl}}/auth/me
 Authorization: Bearer {{authToken}}
 
 ### 2c. Get Platform User Info
 
 # @name getPlatformMe
-
 GET {{baseUrl}}/platform/auth/me
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
 
 ### ============================================
-
 ### PLATFORM - TENANTS (Platform Admin Only)
-
 ### ============================================
 
 ### Get All Tenants
 
 # @name getTenants
-
-GET {{baseUrl}}/platform/tenants/
-Authorization: Bearer {{authToken}}
+GET {{baseUrl}}/platform/platform/tenants/
+Authorization: Bearer {{platformToken}}
 
 ### Create a Tenant
 
 # @name createTenant
-
-POST {{baseUrl}}/platform/tenants/
+POST {{baseUrl}}/platform/platform/tenants/
 Content-Type: application/json
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
 
 {
   "code": "TENANT-001",
@@ -84,22 +76,20 @@ Authorization: Bearer {{authToken}}
   "phone": "09123456789"
 }
 
-@tenantId = {{createTenant.response.body.id}}
+@tenantId = {{createTenant.response.body.tenant.id}}
 
 ### Get Tenant by ID
 
 # @name getTenantById
-
 GET {{baseUrl}}/platform/tenants/{{tenantId}}
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
 
 ### Update Tenant
 
 # @name updateTenant
-
 PUT {{baseUrl}}/platform/tenants/{{tenantId}}
 Content-Type: application/json
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
 
 {
   "name": "Updated Business Name",
@@ -111,20 +101,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Tenant
 
 # @name deleteTenant
-
 DELETE {{baseUrl}}/platform/tenants/{{tenantId}}
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
 
 ### ============================================
-
 ### TENANT - STORES
-
 ### ============================================
 
 ### Create a Store (requires tenantId)
 
 # @name createStore
-
 POST {{baseUrl}}/tenant/stores/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -144,21 +130,18 @@ Authorization: Bearer {{authToken}}
 ### Get All Stores
 
 # @name getStores
-
 GET {{baseUrl}}/tenant/stores/
 Authorization: Bearer {{authToken}}
 
 ### Get Store by ID
 
 # @name getStoreById
-
 GET {{baseUrl}}/tenant/stores/{{storeId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Store
 
 # @name updateStore
-
 PUT {{baseUrl}}/tenant/stores/{{storeId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -175,27 +158,22 @@ Authorization: Bearer {{authToken}}
 ### Delete Store
 
 # @name deleteStore
-
 DELETE {{baseUrl}}/tenant/stores/{{storeId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - CATEGORIES
-
 ### ============================================
 
 ### Get All Categories
 
 # @name getCategories
-
 GET {{baseUrl}}/tenant/categories/
 Authorization: Bearer {{authToken}}
 
 ### Create a Category (requires tenantId)
 
 # @name createCategory
-
 POST {{baseUrl}}/tenant/categories/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -205,7 +183,6 @@ Authorization: Bearer {{authToken}}
   "name": "Beverages",
   "slug": "beverages",
   "description": "Hot and cold drinks",
-  "parentId": null,
   "sortOrder": 1
 }
 
@@ -214,14 +191,12 @@ Authorization: Bearer {{authToken}}
 ### Get Category by ID
 
 # @name getCategoryById
-
 GET {{baseUrl}}/tenant/categories/{{categoryId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Category
 
 # @name updateCategory
-
 PUT {{baseUrl}}/tenant/categories/{{categoryId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -237,27 +212,22 @@ Authorization: Bearer {{authToken}}
 ### Delete Category
 
 # @name deleteCategory
-
 DELETE {{baseUrl}}/tenant/categories/{{categoryId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - PRODUCTS
-
 ### ============================================
 
 ### Get All Products
 
 # @name getProducts
-
 GET {{baseUrl}}/tenant/products/
 Authorization: Bearer {{authToken}}
 
 ### Create a Product (requires tenantId)
 
 # @name createProduct
-
 POST {{baseUrl}}/tenant/products/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -284,21 +254,18 @@ Authorization: Bearer {{authToken}}
 ### Get Product by Barcode
 
 # @name getProductByBarcode
-
 GET {{baseUrl}}/tenant/products/barcode/123456789
 Authorization: Bearer {{authToken}}
 
 ### Get Product by ID
 
 # @name getProductById
-
 GET {{baseUrl}}/tenant/products/{{productId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Product
 
 # @name updateProduct
-
 PUT {{baseUrl}}/tenant/products/{{productId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -313,27 +280,22 @@ Authorization: Bearer {{authToken}}
 ### Delete Product
 
 # @name deleteProduct
-
 DELETE {{baseUrl}}/tenant/products/{{productId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - CUSTOMERS
-
 ### ============================================
 
 ### Get All Customers
 
 # @name getCustomers
-
 GET {{baseUrl}}/tenant/customers/
 Authorization: Bearer {{authToken}}
 
 ### Create a Customer (requires tenantId)
 
 # @name createCustomer
-
 POST {{baseUrl}}/tenant/customers/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -353,14 +315,12 @@ Authorization: Bearer {{authToken}}
 ### Get Customer by ID
 
 # @name getCustomerById
-
 GET {{baseUrl}}/tenant/customers/{{customerId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Customer
 
 # @name updateCustomer
-
 PUT {{baseUrl}}/tenant/customers/{{customerId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -375,20 +335,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Customer
 
 # @name deleteCustomer
-
 DELETE {{baseUrl}}/tenant/customers/{{customerId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - SUPPLIERS
-
 ### ============================================
 
 ### Create a Supplier
 
 # @name createSupplier
-
 POST {{baseUrl}}/tenant/suppliers/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -411,21 +367,18 @@ Authorization: Bearer {{authToken}}
 ### Get All Suppliers
 
 # @name getSuppliers
-
 GET {{baseUrl}}/tenant/suppliers/
 Authorization: Bearer {{authToken}}
 
 ### Get Supplier by ID
 
 # @name getSupplierById
-
 GET {{baseUrl}}/tenant/suppliers/{{supplierId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Supplier
 
 # @name updateSupplier
-
 PUT {{baseUrl}}/tenant/suppliers/{{supplierId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -440,20 +393,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Supplier
 
 # @name deleteSupplier
-
 DELETE {{baseUrl}}/tenant/suppliers/{{supplierId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - PURCHASE ORDERS
-
 ### ============================================
 
 ### Create a Purchase Order
 
 # @name createPO
-
 POST {{baseUrl}}/tenant/purchase-orders/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -484,21 +433,18 @@ Authorization: Bearer {{authToken}}
 ### Get All Purchase Orders
 
 # @name getPOs
-
 GET {{baseUrl}}/tenant/purchase-orders/
 Authorization: Bearer {{authToken}}
 
 ### Get Purchase Order by ID
 
 # @name getPOById
-
 GET {{baseUrl}}/tenant/purchase-orders/{{poId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Purchase Order
 
 # @name updatePO
-
 PUT {{baseUrl}}/tenant/purchase-orders/{{poId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -512,7 +458,6 @@ Authorization: Bearer {{authToken}}
 ### Receive Purchase Order (Increments Stock)
 
 # @name receivePO
-
 POST {{baseUrl}}/tenant/purchase-orders/{{poId}}/receive
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -525,20 +470,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Purchase Order
 
 # @name deletePO
-
 DELETE {{baseUrl}}/tenant/purchase-orders/{{poId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - ORDERS & SALES
-
 ### ============================================
 
 ### Create an Order
 
 # @name createOrder
-
 POST {{baseUrl}}/tenant/orders/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -572,21 +513,18 @@ Authorization: Bearer {{authToken}}
 ### Get All Orders
 
 # @name getOrders
-
 GET {{baseUrl}}/tenant/orders/
 Authorization: Bearer {{authToken}}
 
 ### Get Order Details
 
 # @name getOrderById
-
 GET {{baseUrl}}/tenant/orders/{{orderId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Order Status
 
 # @name updateOrderStatus
-
 PATCH {{baseUrl}}/tenant/orders/{{orderId}}/status
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -598,20 +536,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Order
 
 # @name deleteOrder
-
 DELETE {{baseUrl}}/tenant/orders/{{orderId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - PAYMENTS
-
 ### ============================================
 
 ### Create a Payment
 
 # @name createPayment
-
 POST {{baseUrl}}/tenant/payments/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -631,21 +565,18 @@ Authorization: Bearer {{authToken}}
 ### Get All Payments
 
 # @name getPayments
-
 GET {{baseUrl}}/tenant/payments/
 Authorization: Bearer {{authToken}}
 
 ### Get Payment by ID
 
 # @name getPaymentById
-
 GET {{baseUrl}}/tenant/payments/{{paymentId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Payment
 
 # @name updatePayment
-
 PUT {{baseUrl}}/tenant/payments/{{paymentId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -657,20 +588,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Payment
 
 # @name deletePayment
-
 DELETE {{baseUrl}}/tenant/payments/{{paymentId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - RETURNS
-
 ### ============================================
 
 ### Create a Return
 
 # @name createReturn
-
 POST {{baseUrl}}/tenant/returns/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -699,48 +626,40 @@ Authorization: Bearer {{authToken}}
 ### Get All Returns
 
 # @name getReturns
-
 GET {{baseUrl}}/tenant/returns/
 Authorization: Bearer {{authToken}}
 
 ### Get Return by ID
 
 # @name getReturnById
-
 GET {{baseUrl}}/tenant/returns/{{returnId}}
 Authorization: Bearer {{authToken}}
 
 ### Delete Return
 
 # @name deleteReturn
-
 DELETE {{baseUrl}}/tenant/returns/{{returnId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - INVENTORY MANAGEMENT
-
 ### ============================================
 
 ### Get Inventory
 
 # @name getInventory
-
 GET {{baseUrl}}/tenant/inventory/
 Authorization: Bearer {{authToken}}
 
 ### Get Stock Movements
 
 # @name getMovements
-
 GET {{baseUrl}}/tenant/inventory/movements/
 Authorization: Bearer {{authToken}}
 
 ### Create Stock Adjustment (Manual)
 
 # @name createMovement
-
 POST {{baseUrl}}/tenant/inventory/movements/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -760,7 +679,6 @@ Authorization: Bearer {{authToken}}
 ### Create Inventory Count
 
 # @name createInventoryCount
-
 POST {{baseUrl}}/tenant/inventory/counts/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -780,37 +698,33 @@ Authorization: Bearer {{authToken}}
   ]
 }
 
+@inventoryCountId = {{createInventoryCount.response.body.id}}
+
 ### Get All Inventory Counts
 
 # @name getInventoryCounts
-
 GET {{baseUrl}}/tenant/inventory/counts/
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - SESSIONS (Cashier Sessions)
-
 ### ============================================
 
 ### Get All Sessions
 
 # @name getSessions
-
 GET {{baseUrl}}/tenant/sessions/
 Authorization: Bearer {{authToken}}
 
 ### Get Active Session for User
 
 # @name getActiveSession
-
-GET {{baseUrl}}/tenant/sessions/active/{{userId}}
+GET {{baseUrl}}/tenant/sessions/active/{{userId}}?storeId={{storeId}}
 Authorization: Bearer {{authToken}}
 
 ### Open Cashier Session
 
 # @name openSession
-
 POST {{baseUrl}}/tenant/sessions/open
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -828,7 +742,6 @@ Authorization: Bearer {{authToken}}
 ### Close Cashier Session
 
 # @name closeSession
-
 POST {{baseUrl}}/tenant/sessions/{{sessionId}}/close
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -844,22 +757,18 @@ Authorization: Bearer {{authToken}}
 }
 
 ### ============================================
-
 ### TENANT - STAFF MANAGEMENT
-
 ### ============================================
 
 ### Get All Staff
 
 # @name getStaff
-
 GET {{baseUrl}}/tenant/staff/
 Authorization: Bearer {{authToken}}
 
 ### Create Staff Member
 
 # @name createStaff
-
 POST {{baseUrl}}/tenant/staff/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -881,14 +790,12 @@ Authorization: Bearer {{authToken}}
 ### Get Staff by ID
 
 # @name getStaffById
-
 GET {{baseUrl}}/tenant/staff/{{staffId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Staff
 
 # @name updateStaff
-
 PUT {{baseUrl}}/tenant/staff/{{staffId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -903,27 +810,22 @@ Authorization: Bearer {{authToken}}
 ### Delete Staff
 
 # @name deleteStaff
-
 DELETE {{baseUrl}}/tenant/staff/{{staffId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - PROMOTIONS
-
 ### ============================================
 
 ### Get All Promotions
 
 # @name getPromotions
-
 GET {{baseUrl}}/tenant/promotions/
 Authorization: Bearer {{authToken}}
 
 ### Create a Promotion
 
 # @name createPromotion
-
 POST {{baseUrl}}/tenant/promotions/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -950,14 +852,12 @@ Authorization: Bearer {{authToken}}
 ### Get Promotion by ID
 
 # @name getPromotionById
-
 GET {{baseUrl}}/tenant/promotions/{{promotionId}}
 Authorization: Bearer {{authToken}}
 
 ### Update Promotion
 
 # @name updatePromotion
-
 PUT {{baseUrl}}/tenant/promotions/{{promotionId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -970,20 +870,16 @@ Authorization: Bearer {{authToken}}
 ### Delete Promotion
 
 # @name deletePromotion
-
 DELETE {{baseUrl}}/tenant/promotions/{{promotionId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - STOCK TRANSFERS
-
 ### ============================================
 
 ### Create Stock Transfer
 
 # @name createStockTransfer
-
 POST {{baseUrl}}/tenant/stock-transfers/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1007,21 +903,18 @@ Authorization: Bearer {{authToken}}
 ### Get All Stock Transfers
 
 # @name getStockTransfers
-
 GET {{baseUrl}}/tenant/stock-transfers/
 Authorization: Bearer {{authToken}}
 
 ### Get Stock Transfer by ID
 
 # @name getStockTransferById
-
 GET {{baseUrl}}/tenant/stock-transfers/{{transferId}}
 Authorization: Bearer {{authToken}}
 
 ### Complete Stock Transfer
 
 # @name completeStockTransfer
-
 POST {{baseUrl}}/tenant/stock-transfers/{{transferId}}/complete
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1033,27 +926,22 @@ Authorization: Bearer {{authToken}}
 ### Delete Stock Transfer
 
 # @name deleteStockTransfer
-
 DELETE {{baseUrl}}/tenant/stock-transfers/{{transferId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - TAX RATES
-
 ### ============================================
 
 ### Get All Tax Rates
 
 # @name getTaxRates
-
 GET {{baseUrl}}/tenant/tax-rates/
 Authorization: Bearer {{authToken}}
 
 ### Create Tax Rate
 
 # @name createTaxRate
-
 POST {{baseUrl}}/tenant/tax-rates/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1070,22 +958,18 @@ Authorization: Bearer {{authToken}}
 @taxRateId = {{createTaxRate.response.body.id}}
 
 ### ============================================
-
 ### TENANT - EXPENSES
-
 ### ============================================
 
 ### Get Expense Categories
 
 # @name getExpenseCategories
-
 GET {{baseUrl}}/tenant/expenses/categories/
 Authorization: Bearer {{authToken}}
 
 ### Create Expense Category
 
 # @name createExpenseCategory
-
 POST {{baseUrl}}/tenant/expenses/categories/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1096,10 +980,11 @@ Authorization: Bearer {{authToken}}
   "description": "Electricity, water, internet"
 }
 
+@expenseCategoryId = {{createExpenseCategory.response.body.id}}
+
 ### Create Expense
 
 # @name createExpense
-
 POST {{baseUrl}}/tenant/expenses/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1114,23 +999,21 @@ Authorization: Bearer {{authToken}}
   "expenseDate": "2026-06-11T00:00:00Z"
 }
 
+@expenseId = {{createExpense.response.body.id}}
+
 ### ============================================
-
 ### TENANT - GIFT CARDS
-
 ### ============================================
 
 ### Get All Gift Cards
 
 # @name getGiftCards
-
 GET {{baseUrl}}/tenant/gift-cards/
 Authorization: Bearer {{authToken}}
 
 ### Create Gift Card
 
 # @name createGiftCard
-
 POST {{baseUrl}}/tenant/gift-cards/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1142,17 +1025,17 @@ Authorization: Bearer {{authToken}}
   "expiresAt": "2027-12-31T00:00:00Z"
 }
 
+@giftCardId = {{createGiftCard.response.body.id}}
+
 ### Lookup Gift Card by Number
 
 # @name lookupGiftCard
-
 GET {{baseUrl}}/tenant/gift-cards/lookup/GC123456
 Authorization: Bearer {{authToken}}
 
 ### Reload Gift Card
 
 # @name reloadGiftCard
-
 POST {{baseUrl}}/tenant/gift-cards/{{giftCardId}}/reload
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1162,29 +1045,24 @@ Authorization: Bearer {{authToken}}
 }
 
 ### ============================================
-
 ### TENANT - CUSTOMER WALLETS
-
 ### ============================================
 
 ### Get All Wallets
 
 # @name getWallets
-
 GET {{baseUrl}}/tenant/wallets/
 Authorization: Bearer {{authToken}}
 
 ### Get Wallet by Customer
 
 # @name getWalletByCustomer
-
 GET {{baseUrl}}/tenant/wallets/customer/{{customerId}}
 Authorization: Bearer {{authToken}}
 
 ### Create Wallet Transaction
 
 # @name createWalletTransaction
-
 POST {{baseUrl}}/tenant/wallets/transactions
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1198,22 +1076,18 @@ Authorization: Bearer {{authToken}}
 }
 
 ### ============================================
-
 ### TENANT - NOTIFICATIONS
-
 ### ============================================
 
 ### Get Notifications
 
 # @name getNotifications
-
 GET {{baseUrl}}/tenant/notifications/
 Authorization: Bearer {{authToken}}
 
 ### Create Notification
 
 # @name createNotification
-
 POST {{baseUrl}}/tenant/notifications/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1226,30 +1100,27 @@ Authorization: Bearer {{authToken}}
   "message": "Product Espresso is running low. Only 10 units left."
 }
 
+@notificationId = {{createNotification.response.body.id}}
+
 ### Mark Notification as Read
 
 # @name markRead
-
 PATCH {{baseUrl}}/tenant/notifications/{{notificationId}}/read
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - API KEYS
-
 ### ============================================
 
 ### Get API Keys
 
 # @name getApiKeys
-
 GET {{baseUrl}}/tenant/api-keys/
 Authorization: Bearer {{authToken}}
 
 ### Create API Key
 
 # @name createApiKey
-
 POST {{baseUrl}}/tenant/api-keys/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1262,30 +1133,27 @@ Authorization: Bearer {{authToken}}
   "expiresAt": "2027-12-31T00:00:00Z"
 }
 
+@apiKeyId = {{createApiKey.response.body.id}}
+
 ### Delete API Key
 
 # @name deleteApiKey
-
 DELETE {{baseUrl}}/tenant/api-keys/{{apiKeyId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### TENANT - WEBHOOKS
-
 ### ============================================
 
 ### Get Webhooks
 
 # @name getWebhooks
-
 GET {{baseUrl}}/tenant/webhooks/
 Authorization: Bearer {{authToken}}
 
 ### Create Webhook
 
 # @name createWebhook
-
 POST {{baseUrl}}/tenant/webhooks/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1297,10 +1165,11 @@ Authorization: Bearer {{authToken}}
   "events": ["order.created", "order.updated"]
 }
 
+@webhookId = {{createWebhook.response.body.id}}
+
 ### Update Webhook
 
 # @name updateWebhook
-
 PUT {{baseUrl}}/tenant/webhooks/{{webhookId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -1312,26 +1181,21 @@ Authorization: Bearer {{authToken}}
 ### Delete Webhook
 
 # @name deleteWebhook
-
 DELETE {{baseUrl}}/tenant/webhooks/{{webhookId}}
 Authorization: Bearer {{authToken}}
 
 ### ============================================
-
 ### SYSTEM - AUDIT LOGS
-
 ### ============================================
 
 ### Get Audit Logs
 
 # @name getAuditLogs
-
 GET {{baseUrl}}/platform/audit-logs/
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
 
 ### Get Audit Log by ID
 
 # @name getAuditLogById
-
 GET {{baseUrl}}/platform/audit-logs/{{auditLogId}}
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}

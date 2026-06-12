@@ -135,6 +135,9 @@ export const categoryRoutes = new Elysia({ prefix: "/categories" })
             success: false,
             message: "Specified parent category does not exist.",
           };
+        } else {
+          // parentId မပါရင် သို့မဟုတ် "null" ပို့ရင် null အဖြစ် ပြောင်းပေးပါ
+          body.parentId = undefined;
         }
       }
 
