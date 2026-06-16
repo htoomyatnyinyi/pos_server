@@ -1902,7 +1902,3 @@ enum GiftCardTransactionType {
   REFUND
   VOID
 }
-
-// 
-// END OF COMPLETE SCHEMA
-// 

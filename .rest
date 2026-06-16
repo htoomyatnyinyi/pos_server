@@ -2,6 +2,8 @@
 @authToken = {{login.response.body.token}}
 @userId = {{login.response.body.id}}
 @platformToken = {{platformLogin.response.body.token}}
+@platformUserId = {{platformLogin.response.body.id}}
+
 
 ### 1. Register a New User (with tenantCode)
 
@@ -59,35 +61,39 @@ Authorization: Bearer {{platformToken}}
 ### Get All Tenants
 
 # @name getTenants
-GET {{baseUrl}}/platform/platform/tenants/
+GET {{baseUrl}}/platform/tenants/
 Authorization: Bearer {{platformToken}}
 
 ### Create a Tenant
 
 # @name createTenant
-POST {{baseUrl}}/platform/platform/tenants/
+POST {{baseUrl}}/platform/tenants/
 Content-Type: application/json
-Authorization: Bearer {{platformToken}}
+# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbXFhbTY1aWQwMDAyYTdubXBiZGIxbTR2Iiwicm9sZSI6IlNVUEVSX0FETUlOIiwiaWF0IjoxNzgxMzEyNzg5fQ.xs8fFu8ZUS7rCBVipRsds1juiSlZ_pgMZZUvpeO9e1w
+Authorization: {{platformToken}}
 
 {
-  "code": "TENANT-001",
+  "code": "TENANT-007",
   "name": "New Business Tenant",
   "email": "tenant@business.com",
-  "phone": "09123456789"
+  "phone": "09123456789",
+  "userId": "{{platformUserId}}"
 }
 
+
+###
 @tenantId = {{createTenant.response.body.tenant.id}}
 
 ### Get Tenant by ID
-
 # @name getTenantById
-GET {{baseUrl}}/platform/tenants/{{tenantId}}
+GET {{baseUrl}}/tenants/{{tenantId}}
+# GET {{baseUrl}}/tenants/{{tenantId}}
 Authorization: Bearer {{platformToken}}
 
 ### Update Tenant
 
 # @name updateTenant
-PUT {{baseUrl}}/platform/tenants/{{tenantId}}
+PUT {{baseUrl}}/tenants/{{tenantId}}
 Content-Type: application/json
 Authorization: Bearer {{platformToken}}
 
@@ -125,6 +131,9 @@ Authorization: Bearer {{authToken}}
   "taxNumber": "TAX-123456"
 }
 
+
+###
+# @storeId = {{createStore.response.body.stores.id}}
 @storeId = {{createStore.response.body.id}}
 
 ### Get All Stores
@@ -134,6 +143,7 @@ GET {{baseUrl}}/tenant/stores/
 Authorization: Bearer {{authToken}}
 
 ### Get Store by ID
+
 
 # @name getStoreById
 GET {{baseUrl}}/tenant/stores/{{storeId}}
@@ -174,6 +184,7 @@ Authorization: Bearer {{authToken}}
 ### Create a Category (requires tenantId)
 
 # @name createCategory
+###
 POST {{baseUrl}}/tenant/categories/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -185,6 +196,8 @@ Authorization: Bearer {{authToken}}
   "description": "Hot and cold drinks",
   "sortOrder": 1
 }
+
+###
 
 @categoryId = {{createCategory.response.body.id}}
 

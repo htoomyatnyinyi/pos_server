@@ -204,8 +204,8 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             wholesalePrice: body.wholesalePrice,
             categoryId,
             supplierId: body.supplierId,
-            manufacturingDate: body.manufacturingDate,
-            expiryDate: body.expiryDate,
+            manufacturingDate: body.manufacturingDate ? new Date(body.manufacturingDate) : undefined,
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : undefined,
             variants: body.variants
               ? {
                   create: body.variants.map((v) => ({
@@ -272,8 +272,8 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         wholesalePrice: t.Optional(t.Number()),
         categoryId: t.Optional(t.String()),
         categoryName: t.Optional(t.String()),
-        manufacturingDate: t.Optional(t.Date()),
-        expiryDate: t.Optional(t.Date()),
+        manufacturingDate: t.Optional(t.String()),
+        expiryDate: t.Optional(t.String()),
         supplierId: t.Optional(t.String()),
         storeId: t.Optional(t.String()),
         initialStock: t.Optional(t.Integer()),
@@ -387,8 +387,8 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             wholesalePrice: body.wholesalePrice,
             categoryId: categoryId ?? undefined,
             supplierId: body.supplierId,
-            manufacturingDate: body.manufacturingDate,
-            expiryDate: body.expiryDate,
+            manufacturingDate: body.manufacturingDate ? new Date(body.manufacturingDate) : undefined,
+            expiryDate: body.expiryDate ? new Date(body.expiryDate) : undefined,
             isActive: body.isActive,
           },
         });
@@ -414,8 +414,8 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           wholesalePrice: t.Optional(t.Number()),
           categoryId: t.Optional(t.String()),
           categoryName: t.Optional(t.String()),
-          manufacturingDate: t.Optional(t.Date()),
-          expiryDate: t.Optional(t.Date()),
+          manufacturingDate: t.Optional(t.String()),
+          expiryDate: t.Optional(t.String()),
           supplierId: t.Optional(t.String()),
           isActive: t.Optional(t.Boolean()),
         }),

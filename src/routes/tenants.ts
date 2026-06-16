@@ -1,13 +1,12 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
-import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
+// import { platformAuthMiddleware } from "../../middlewares/platformAuthMiddleware";
 
 export const tenantRoutes = new Elysia({
   prefix: "/tenants",
 })
-  // 🔐 Multi-Tenant User Authentication Context အား ချိတ်ဆက်ခြင်း
-  .use(tenantAuthMiddleware)
-
+  // // 🔐 Multi-Tenant User Authentication Context အား ချိတ်ဆက်ခြင်း
+  // .use(tenantAuthMiddleware)
   /**
    * 1. GET ALL TENANTS (SUPER ADMIN ONLY)
    * ပလက်ဖောင်းပေါ်ရှိ လုပ်ငန်းစုအားလုံးကို စာရင်းကြည့်ခြင်း
@@ -15,6 +14,7 @@ export const tenantRoutes = new Elysia({
   .get(
     "/",
     async ({ role, query, set }) => {
+      console.log(role, query, set, "check");
       // 🚨 လုံခြုံရေးအရ SUPER_ADMIN သို့မဟုတ် SYSTEM MANAGER မဟုတ်ပါက လုံးဝ ကြည့်ခွင့်မပြုပါ
       if (role !== "SUPER_ADMIN" && role !== "MANAGER") {
         set.status = 403;
@@ -102,6 +102,8 @@ export const tenantRoutes = new Elysia({
   .post(
     "/",
     async ({ body, userId, set }) => {
+      console.log(body, userId, set, " post check body");
+
       const generatedCode = body.code
         ? body.code.trim().toUpperCase()
         : `TNT-${Date.now()}`;
@@ -129,18 +131,20 @@ export const tenantRoutes = new Elysia({
             isActive: true,
           },
         });
-
-        // ခြေရာခံ မှတ်တမ်းသွင်းခြင်း
-        await tx.auditLog.create({
-          data: {
-            tenantId: created.id, // New Tenant Log Boundary
-            userId,
-            action: "CREATE",
-            entity: "Tenant",
-            entityId: created.id,
-            newData: JSON.parse(JSON.stringify(created)),
-          },
-        });
+        console.log(userId, "post user id");
+        if (userId) {
+          // ခြေရာခံ မှတ်တမ်းသွင်းခြင်း
+          await tx.auditLog.create({
+            data: {
+              tenantId: created.id, // New Tenant Log Boundary
+              userId: userId,
+              action: "CREATE",
+              entity: "Tenant",
+              entityId: created.id,
+              newData: JSON.parse(JSON.stringify(created)),
+            },
+          });
+        }
 
         return created;
       });
@@ -156,8 +160,9 @@ export const tenantRoutes = new Elysia({
       body: t.Object({
         code: t.Optional(t.String()),
         name: t.String({ minLength: 2 }),
-        email: t.Optional(t.String({ format: "email" })),
+        email: t.Optional(t.String()),
         phone: t.Optional(t.String()),
+        userId: t.Optional(t.String()),
       }),
     },
   )
@@ -199,17 +204,20 @@ export const tenantRoutes = new Elysia({
         });
 
         // Track Update inside AuditLogs
-        await tx.auditLog.create({
-          data: {
-            tenantId: id,
-            userId,
-            action: "UPDATE",
-            entity: "Tenant",
-            entityId: id,
-            oldData: JSON.parse(JSON.stringify(currentTenant)),
-            newData: JSON.parse(JSON.stringify(updated)),
-          },
-        });
+        console.log(userId, "update user id");
+        if (userId) {
+          await tx.auditLog.create({
+            data: {
+              tenantId: id,
+              userId: userId,
+              action: "UPDATE",
+              entity: "Tenant",
+              entityId: id,
+              oldData: JSON.parse(JSON.stringify(currentTenant)),
+              newData: JSON.parse(JSON.stringify(updated)),
+            },
+          });
+        }
 
         return updated;
       });
@@ -227,6 +235,7 @@ export const tenantRoutes = new Elysia({
           name: t.Optional(t.String()),
           email: t.Optional(t.String()),
           phone: t.Optional(t.String()),
+          userId: t.Optional(t.String()),
           isActive: t.Optional(t.Boolean()),
         }),
       ),

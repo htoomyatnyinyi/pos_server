@@ -16,6 +16,8 @@ export const platformAuthMiddleware = new Elysia({
 
     const token = authHeader.split(" ")[1];
     const payload = await jwt.verify(token);
+    console.log("token", token);
+    console.log("payload", payload);
 
     if (!payload) {
       return {

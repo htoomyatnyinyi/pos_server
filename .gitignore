@@ -12,6 +12,8 @@
 /.next/
 /out/
 
+/pgdata_local
+
 # production
 /build
 .env
