@@ -252,6 +252,8 @@ model User {
   id              String   @id @default(cuid())
   username        String
   email           String?
+  emailVerified   Boolean  @default(false)
+  googleId        String?
   phone           String?
   passwordHash    String
   name            String
@@ -303,6 +305,7 @@ model User {
   @@index([role, isActive])
   @@index([deletedAt])
   @@index([tenantId, isActive])
+  @@index([googleId])
 }
 
 model UserPermission {
@@ -455,6 +458,7 @@ model OtpVerification {
   type        OtpType
   expiresAt   DateTime
   isUsed      Boolean  @default(false)
+  createdAt   DateTime @default(now())
   
   user        User     @relation(fields: [userId], references: [id])
   

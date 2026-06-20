@@ -16,8 +16,6 @@ export const platformAuthMiddleware = new Elysia({
 
     const token = authHeader.split(" ")[1];
     const payload = await jwt.verify(token);
-    console.log("token", token);
-    console.log("payload", payload);
 
     if (!payload) {
       return {
@@ -30,6 +28,7 @@ export const platformAuthMiddleware = new Elysia({
       isAuthError: false,
       role: payload.role as string,
       userId: payload.sub as string,
+      tenantId: undefined as string | undefined,
     };
   })
   // error အစား စိတ်ချရသည့် 'set' ကို ဆွဲထုတ်သုံးစွဲပါသည်

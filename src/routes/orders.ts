@@ -134,7 +134,6 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
             completedAt: new Date(),
             items: {
               create: body.items.map((item) => ({
-                tenantId,
                 productId: item.productId,
                 variantId: item.variantId ?? null,
                 quantity: item.quantity,

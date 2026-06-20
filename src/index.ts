@@ -53,15 +53,14 @@ const app = new Elysia()
       secret: process.env.JWT_SECRET!,
     }),
   )
-  .onParse(({ request, contentType }) => {
-    console.log("Incoming request Content-Type:", contentType);
-  })
+
   .onError(({ code, error, set }) => {
+    const err = error as any;
     console.error("Global Error Handler:", {
       code,
-      message: error.message,
-      cause: error.cause,
-      stack: error.stack,
+      message: err.message,
+      cause: err.cause,
+      stack: err.stack,
     });
     if (code === "VALIDATION") {
       set.status = 400;

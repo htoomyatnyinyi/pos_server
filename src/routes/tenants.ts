@@ -1,12 +1,11 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
-// import { platformAuthMiddleware } from "../../middlewares/platformAuthMiddleware";
+import { platformAuthMiddleware } from "../../middlewares/platformAuthMiddleware";
 
 export const tenantRoutes = new Elysia({
   prefix: "/tenants",
 })
-  // // 🔐 Multi-Tenant User Authentication Context အား ချိတ်ဆက်ခြင်း
-  // .use(tenantAuthMiddleware)
+  .use(platformAuthMiddleware)
   /**
    * 1. GET ALL TENANTS (SUPER ADMIN ONLY)
    * ပလက်ဖောင်းပေါ်ရှိ လုပ်ငန်းစုအားလုံးကို စာရင်းကြည့်ခြင်း
