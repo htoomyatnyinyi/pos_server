@@ -139,6 +139,7 @@ const app = new Elysia()
       .group("/tenant", (tenantApp) =>
         tenantApp
           .use(tenantAuthMiddleware)
+          .use(tenantRoutes)
           .use(productRoutes)
           .use(orderRoutes)
           .use(storeRoutes)

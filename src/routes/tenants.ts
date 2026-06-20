@@ -1,18 +1,16 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
-import { platformAuthMiddleware } from "../../middlewares/platformAuthMiddleware";
 
 export const tenantRoutes = new Elysia({
   prefix: "/tenants",
 })
-  .use(platformAuthMiddleware)
   /**
    * 1. GET ALL TENANTS (SUPER ADMIN ONLY)
    * ပလက်ဖောင်းပေါ်ရှိ လုပ်ငန်းစုအားလုံးကို စာရင်းကြည့်ခြင်း
    */
   .get(
     "/",
-    async ({ role, query, set }) => {
+    async ({ role, query, set }: any) => {
       console.log(role, query, set, "check");
       // 🚨 လုံခြုံရေးအရ SUPER_ADMIN သို့မဟုတ် SYSTEM MANAGER မဟုတ်ပါက လုံးဝ ကြည့်ခွင့်မပြုပါ
       if (role !== "SUPER_ADMIN" && role !== "MANAGER") {
@@ -64,7 +62,7 @@ export const tenantRoutes = new Elysia({
    */
   .get(
     "/:id",
-    async ({ params: { id }, tenantId, role, set }) => {
+    async ({ params: { id }, tenantId, role, set }: any) => {
       // 🚨 လုံခြုံရေးအရ မိမိ Tenant ID နှင့် ကိုက်ညီရမည် (သို့မဟုတ်) Super Admin ဖြစ်ရမည်
       if (role !== "SUPER_ADMIN" && tenantId !== id) {
         set.status = 403;
@@ -100,7 +98,7 @@ export const tenantRoutes = new Elysia({
    */
   .post(
     "/",
-    async ({ body, userId, set }) => {
+    async ({ body, userId, set }: any) => {
       console.log(body, userId, set, " post check body");
 
       const generatedCode = body.code
@@ -120,7 +118,7 @@ export const tenantRoutes = new Elysia({
         };
       }
 
-      const tenant = await prisma.$transaction(async (tx: any) => {
+      const tenant = await prisma.$transaction(async (tx) => {
         const created = await tx.tenant.create({
           data: {
             code: generatedCode,
@@ -172,7 +170,7 @@ export const tenantRoutes = new Elysia({
    */
   .put(
     "/:id",
-    async ({ params: { id }, body, tenantId, role, userId, set }) => {
+    async ({ params: { id }, body, tenantId, role, userId, set }: any) => {
       // 🚨 မိမိ လုပ်ငန်း ID ကလွဲပြီး အခြားသူများအား လှမ်းပြင်ခွင့်မပြုရန် ကာကွယ်ခြင်း
       if (role !== "SUPER_ADMIN" && tenantId !== id) {
         set.status = 403;
@@ -191,7 +189,7 @@ export const tenantRoutes = new Elysia({
         return { success: false, message: "Tenant account not found." };
       }
 
-      const updatedTenant = await prisma.$transaction(async (tx: any) => {
+      const updatedTenant = await prisma.$transaction(async (tx) => {
         const updated = await tx.tenant.update({
           where: { id },
           data: {
@@ -247,7 +245,7 @@ export const tenantRoutes = new Elysia({
    */
   .delete(
     "/:id",
-    async ({ params: { id }, role, userId, set }) => {
+    async ({ params: { id }, role, userId, set }: any) => {
       // 🚨 ဘေးကင်းလုံခြုံရေးအရ Tenant ဖျက်သိမ်းခြင်းကို SUPER ADMIN တစ်ဦးတည်းသာ လုပ်ဆောင်ခွင့်ရှိသည်
       if (role !== "SUPER_ADMIN") {
         set.status = 403;
@@ -270,7 +268,7 @@ export const tenantRoutes = new Elysia({
         };
       }
 
-      await prisma.$transaction(async (tx: any) => {
+      await prisma.$transaction(async (tx) => {
         const deleted = await tx.tenant.update({
           where: { id },
           data: {

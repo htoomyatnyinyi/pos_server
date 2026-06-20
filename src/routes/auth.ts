@@ -46,7 +46,7 @@ export const authRoutes = new Elysia()
 
           const hashedPassword = await bcrypt.hash(body.password, 12);
 
-          const user = await prisma.$transaction(async (tx: any) => {
+          const user = await prisma.$transaction(async (tx) => {
             const tenant = await tx.tenant.create({
               data: {
                 code:
@@ -377,7 +377,7 @@ export const authRoutes = new Elysia()
             // Auto-create tenant and user for Google OAuth login
             const randomSuffix = Math.random().toString(36).substring(7).toUpperCase();
             
-            user = await prisma.$transaction(async (tx: any) => {
+            user = await prisma.$transaction(async (tx) => {
               const tenant = await tx.tenant.create({
                 data: {
                   code: `TNT-${randomSuffix}`,

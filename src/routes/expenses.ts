@@ -107,7 +107,7 @@ export const expenseRoutes = new Elysia({
       });
       if (!current) throw new Error("Expense not found");
 
-      return prisma.$transaction(async (tx: any) => {
+      return prisma.$transaction(async (tx) => {
         const updated = await tx.expense.update({
           where: { id },
           data: {
@@ -150,7 +150,7 @@ export const expenseRoutes = new Elysia({
     },
   )
   .delete("/:id", async ({ params: { id }, tenantId, userId }) => {
-    return prisma.$transaction(async (tx: any) => {
+    return prisma.$transaction(async (tx) => {
       const deleted = await tx.expense.update({
         where: { id, tenantId },
         data: { deletedAt: new Date() },
