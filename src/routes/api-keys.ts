@@ -44,7 +44,7 @@ export const apiKeyRoutes = new Elysia({
       const rawSecret = generateApiSecret();
       const hashedSecret = hashSecret(rawSecret);
 
-      const apiKey = await prisma.$transaction(async (tx) => {
+      const apiKey = await prisma.$transaction(async (tx: any) => {
         const created = await tx.apiKey.create({
           data: {
             tenantId,
@@ -102,7 +102,7 @@ export const apiKeyRoutes = new Elysia({
         };
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.apiKey.update({
           where: { id },
           data: { isActive: false },

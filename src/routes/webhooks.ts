@@ -116,7 +116,7 @@ export const webhookRoutes = new Elysia({
         ? body.secret.trim()
         : randomBytes(32).toString("hex");
 
-      const webhook = await prisma.$transaction(async (tx) => {
+      const webhook = await prisma.$transaction(async (tx: any) => {
         const created = await tx.webhook.create({
           data: {
             tenantId,
@@ -182,7 +182,7 @@ export const webhookRoutes = new Elysia({
         };
       }
 
-      const updatedWebhook = await prisma.$transaction(async (tx) => {
+      const updatedWebhook = await prisma.$transaction(async (tx: any) => {
         const updated = await tx.webhook.update({
           where: { id },
           data: {
@@ -259,7 +259,7 @@ export const webhookRoutes = new Elysia({
         };
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.webhook.update({
           where: { id },
           data: { isActive: false },

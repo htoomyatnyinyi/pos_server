@@ -1,5 +1,4 @@
 import { Elysia } from "elysia";
-import { Prisma } from "@prisma/client";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
@@ -56,57 +55,7 @@ const app = new Elysia()
   .onParse(({ request, contentType }) => {
     console.log("Incoming request Content-Type:", contentType);
   })
-  .onError(({ code, error, set }) => {
-    console.error("Global Error Handler:", {
-      code,
-      message: error.message,
-      cause: error.cause,
-      stack: error.stack,
-    });
-    if (code === "VALIDATION") {
-      set.status = 400;
-      const errorsList = Array.isArray(error.all)
-        ? error.all
-        : [...(error.all || [])];
-      return {
-        success: false,
-        message: "Validation failed",
-        errors: errorsList.map((e: any) => ({
-          path: e.path,
-          message: e.message,
-          expected: e.schema?.type || "unknown",
-        })),
-      };
-    }
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") {
-        set.status = 409;
-        return {
-          success: false,
-          message: `Unique constraint failed: ${error.meta?.target || "Unknown field"}`,
-          code: "CONFLICT",
-        };
-      }
-      if (error.code === "P2025") {
-        set.status = 404;
-        return {
-          success: false,
-          message: "Record not found",
-          code: "NOT_FOUND",
-        };
-      }
-    }
-
-    set.status = 500;
-    return {
-      success: false,
-      message:
-        process.env.NODE_ENV === "development"
-          ? (error as Error).message
-          : "Something went wrong",
-    };
-  })
   .get("/", () => ({
     success: true,
     status: "ok",
@@ -139,6 +88,7 @@ const app = new Elysia()
       // ၃။ Tenant Group - ဆိုင်ခွဲများအတွက် လမ်းကြောင်းများ (Inline ပုံစံပြောင်းလဲထားသည်)
       .group("/tenant", (tenantApp) =>
         tenantApp
+
           .use(tenantAuthMiddleware)
           .use(productRoutes)
           .use(orderRoutes)

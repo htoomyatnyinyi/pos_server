@@ -73,7 +73,7 @@ Content-Type: application/json
 Authorization: {{platformToken}}
 
 {
-  "code": "TENANT-007",
+  "code": "TENANT-008",
   "name": "New Business Tenant",
   "email": "tenant@business.com",
   "phone": "09123456789",
