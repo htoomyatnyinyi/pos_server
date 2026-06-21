@@ -1,62 +1,36 @@
-# =========================
-# Install dependencies
-# =========================
-FROM oven/bun:1 AS deps
+FROM oven/bun:1
 
 WORKDIR /app
 
+# Copy dependency files first to leverage Docker caching
 COPY package.json bun.lock ./
+RUN bun install
 
-RUN bun install --frozen-lockfile
-
-# =========================
-# Build stage
-# =========================
-FROM oven/bun:1 AS builder
-
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
-
-COPY . .
-
+# Copy Prisma schema and generate the client
+COPY prisma ./prisma/
 RUN bun x prisma generate
 
-# =========================
-# Production stage
-# =========================
-FROM oven/bun:1-slim
-
-WORKDIR /app
-
-ENV NODE_ENV=production
-
-COPY --from=builder /app ./
+# Copy the rest of the application source code
+COPY . .
 
 EXPOSE 6060
 
-USER bun
-
+# Corrected CMD syntax (removed the trailing ", load")
 CMD ["bun", "run", "src/index.ts"]
 
 
 
-
-
-# FROM oven/bun:latest
+# FROM oven/bun:1
 
 # WORKDIR /app
 
 # COPY package.json bun.lock ./
-# RUN bun install --frozen-lockfile
+# RUN bun install
 
-# COPY . .
-
-# # Generate Prisma Client
+# COPY prisma ./prisma/
 # RUN bun x prisma generate
 
-# # Use host network to access host Postgres directly
-# # Connects to postgres:5432 on host
+# COPY . .
 
 # EXPOSE 6060
 

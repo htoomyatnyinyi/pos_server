@@ -1,84 +1,252 @@
 @baseUrl = http://localhost:6060/api
 @authToken = {{login.response.body.token}}
 @userId = {{login.response.body.id}}
+@platformToken = {{platformLogin.response.body.token}}
+@platformUserId = {{platformLogin.response.body.id}}
 
-### 1. Register a New User
+
+### 1. Register a New User (with tenantCode)
+
+# @name register
 POST {{baseUrl}}/auth/register
 Content-Type: application/json
 
 {
   "name": "HTOO MYAT",
   "email": "htomyat@gmail.com",
-  "password": "password123"
+  "password": "password123",
+  "tenantName": "My Business",
+  "tenantCode": "MYBIZ"
 }
 
-### 2. Login
+### 2. Login (with optional tenantCode)
+
 # @name login
 POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
   "email": "htomyat@gmail.com",
-  "password": "password123"
+  "password": "password123",
+  "tenantCode": "MYBIZ"
 }
 
+### 2a. Platform Login (for platform-level access)
+
+# @name platformLogin
+POST {{baseUrl}}/platform/auth/login
+Content-Type: application/json
+
+{
+  "email": "root@minipos-platform.com",
+  "password": "SuperAdmin123!"
+}
+
+### 2b. Get Current User Info
+
+# @name getMe
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{authToken}}
+
+### 2c. Get Platform User Info
+
+# @name getPlatformMe
+GET {{baseUrl}}/platform/auth/me
+Authorization: Bearer {{platformToken}}
+
 ### ============================================
-### STORES
+### PLATFORM - TENANTS (Platform Admin Only)
 ### ============================================
 
-### Create a Store
+### Get All Tenants
+
+# @name getTenants
+GET {{baseUrl}}/platform/tenants/
+Authorization: Bearer {{platformToken}}
+
+### Create a Tenant
+
+# @name createTenant
+POST {{baseUrl}}/platform/tenants/
+Content-Type: application/json
+# Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbXFhbTY1aWQwMDAyYTdubXBiZGIxbTR2Iiwicm9sZSI6IlNVUEVSX0FETUlOIiwiaWF0IjoxNzgxMzEyNzg5fQ.xs8fFu8ZUS7rCBVipRsds1juiSlZ_pgMZZUvpeO9e1w
+Authorization: {{platformToken}}
+
+{
+  "code": "TENANT-008",
+  "name": "New Business Tenant",
+  "email": "tenant@business.com",
+  "phone": "09123456789",
+  "userId": "{{platformUserId}}"
+}
+
+
+###
+@tenantId = {{createTenant.response.body.tenant.id}}
+
+### Get Tenant by ID
+# @name getTenantById
+GET {{baseUrl}}/tenants/{{tenantId}}
+# GET {{baseUrl}}/tenants/{{tenantId}}
+Authorization: Bearer {{platformToken}}
+
+### Update Tenant
+
+# @name updateTenant
+PUT {{baseUrl}}/tenants/{{tenantId}}
+Content-Type: application/json
+Authorization: Bearer {{platformToken}}
+
+{
+  "name": "Updated Business Name",
+  "email": "updated@business.com",
+  "phone": "09987654321",
+  "isActive": true
+}
+
+### Delete Tenant
+
+# @name deleteTenant
+DELETE {{baseUrl}}/platform/tenants/{{tenantId}}
+Authorization: Bearer {{platformToken}}
+
+### ============================================
+### TENANT - STORES
+### ============================================
+
+### Create a Store (requires tenantId)
+
 # @name createStore
-POST {{baseUrl}}/stores
+POST {{baseUrl}}/tenant/stores/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "tenantId": "{{tenantId}}",
   "code": "MAIN-STORE",
-  "name": "Midnight Corner Main",
+  "name": "Mini_POS",
   "address": "Yangon, Myanmar",
-  "phone": "09123456789"
+  "phone": "09123456789",
+  "email": "store@minipos.com",
+  "taxNumber": "TAX-123456"
 }
 
+
+###
+# @storeId = {{createStore.response.body.stores.id}}
 @storeId = {{createStore.response.body.id}}
 
 ### Get All Stores
-GET {{baseUrl}}/stores
+
+# @name getStores
+GET {{baseUrl}}/tenant/stores/
 Authorization: Bearer {{authToken}}
 
-### ============================================
-### PRODUCTS & CATEGORIES
-### ============================================
+### Get Store by ID
 
-### Get All Categories
-GET {{baseUrl}}/categories
+
+# @name getStoreById
+GET {{baseUrl}}/tenant/stores/{{storeId}}
 Authorization: Bearer {{authToken}}
 
-### Create a Category
-# @name createCategory
-POST {{baseUrl}}/categories
+### Update Store
+
+# @name updateStore
+PUT {{baseUrl}}/tenant/stores/{{storeId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "name": "Updated Store Name",
+  "address": "New Address, Yangon",
+  "phone": "09999999999",
+  "email": "new@store.com",
+  "taxNumber": "TAX-789012",
+  "isActive": true
+}
+
+### Delete Store
+
+# @name deleteStore
+DELETE {{baseUrl}}/tenant/stores/{{storeId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - CATEGORIES
+### ============================================
+
+### Get All Categories
+
+# @name getCategories
+GET {{baseUrl}}/tenant/categories/
+Authorization: Bearer {{authToken}}
+
+### Create a Category (requires tenantId)
+
+# @name createCategory
+###
+POST {{baseUrl}}/tenant/categories/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "name": "Beverages",
   "slug": "beverages",
   "description": "Hot and cold drinks",
   "sortOrder": 1
 }
 
+###
+
 @categoryId = {{createCategory.response.body.id}}
 
-### Get All Products
-GET {{baseUrl}}/products
+### Get Category by ID
+
+# @name getCategoryById
+GET {{baseUrl}}/tenant/categories/{{categoryId}}
 Authorization: Bearer {{authToken}}
 
-### Create a Product
-# @name createProduct
-POST {{baseUrl}}/products
+### Update Category
+
+# @name updateCategory
+PUT {{baseUrl}}/tenant/categories/{{categoryId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "name": "Hot Beverages",
+  "slug": "hot-beverages",
+  "description": "Hot drinks only",
+  "sortOrder": 1,
+  "isActive": true
+}
+
+### Delete Category
+
+# @name deleteCategory
+DELETE {{baseUrl}}/tenant/categories/{{categoryId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - PRODUCTS
+### ============================================
+
+### Get All Products
+
+# @name getProducts
+GET {{baseUrl}}/tenant/products/
+Authorization: Bearer {{authToken}}
+
+### Create a Product (requires tenantId)
+
+# @name createProduct
+POST {{baseUrl}}/tenant/products/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "sku": "COF-001",
   "barcode": "123456789",
   "name": "Espresso",
@@ -86,27 +254,67 @@ Authorization: Bearer {{authToken}}
   "brand": "Premium Roast",
   "costPrice": 1.5,
   "sellingPrice": 3.5,
-  "stockQuantity": 100,
-  "categoryId": "{{categoryId}}"
+  "categoryId": "{{categoryId}}",
+  "categoryName": "Beverages",
+  "storeId": "{{storeId}}",
+  "initialStock": 100,
+  "userId": "{{userId}}",
+  "variants": []
 }
 
 @productId = {{createProduct.response.body.id}}
 
-### ============================================
-### CUSTOMERS
-### ============================================
+### Get Product by Barcode
 
-### Get All Customers
-GET {{baseUrl}}/customers
+# @name getProductByBarcode
+GET {{baseUrl}}/tenant/products/barcode/123456789
 Authorization: Bearer {{authToken}}
 
-### Create a Customer
-# @name createCustomer
-POST {{baseUrl}}/customers
+### Get Product by ID
+
+# @name getProductById
+GET {{baseUrl}}/tenant/products/{{productId}}
+Authorization: Bearer {{authToken}}
+
+### Update Product
+
+# @name updateProduct
+PUT {{baseUrl}}/tenant/products/{{productId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "name": "Double Espresso",
+  "sellingPrice": 4.5,
+  "costPrice": 2.0,
+  "isActive": true
+}
+
+### Delete Product
+
+# @name deleteProduct
+DELETE {{baseUrl}}/tenant/products/{{productId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - CUSTOMERS
+### ============================================
+
+### Get All Customers
+
+# @name getCustomers
+GET {{baseUrl}}/tenant/customers/
+Authorization: Bearer {{authToken}}
+
+### Create a Customer (requires tenantId)
+
+# @name createCustomer
+POST {{baseUrl}}/tenant/customers/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "code": "CUST-001",
   "name": "John Doe",
   "phone": "09123456789",
@@ -117,48 +325,112 @@ Authorization: Bearer {{authToken}}
 
 @customerId = {{createCustomer.response.body.id}}
 
+### Get Customer by ID
 
-### ============================================
-### SUPPLIERS
-### ============================================
+# @name getCustomerById
+GET {{baseUrl}}/tenant/customers/{{customerId}}
+Authorization: Bearer {{authToken}}
 
-### Create a Supplier
-# @name createSupplier
-POST {{baseUrl}}/suppliers
+### Update Customer
+
+# @name updateCustomer
+PUT {{baseUrl}}/tenant/customers/{{customerId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "name": "John Updated",
+  "phone": "09888888888",
+  "tier": "PLATINUM",
+  "isActive": true
+}
+
+### Delete Customer
+
+# @name deleteCustomer
+DELETE {{baseUrl}}/tenant/customers/{{customerId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - SUPPLIERS
+### ============================================
+
+### Create a Supplier
+
+# @name createSupplier
+POST {{baseUrl}}/tenant/suppliers/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "code": "SUPP-001",
   "name": "Coffee Beans Co., Ltd.",
   "contactName": "Mr. Roaster",
   "phone": "09987654321",
-  "email": "roaster@coffeebeans.com"
+  "email": "roaster@coffeebeans.com",
+  "address": "456 Supplier St, Yangon",
+  "taxId": "TAX-SUP-001",
+  "paymentTerms": 30,
+  "creditLimit": 5000
 }
 
 @supplierId = {{createSupplier.response.body.id}}
 
 ### Get All Suppliers
-GET {{baseUrl}}/suppliers
+
+# @name getSuppliers
+GET {{baseUrl}}/tenant/suppliers/
 Authorization: Bearer {{authToken}}
 
+### Get Supplier by ID
 
-### ============================================
-### PURCHASE ORDERS
-### ============================================
+# @name getSupplierById
+GET {{baseUrl}}/tenant/suppliers/{{supplierId}}
+Authorization: Bearer {{authToken}}
 
-### Create a Purchase Order
-# @name createPO
-POST {{baseUrl}}/purchase-orders
+### Update Supplier
+
+# @name updateSupplier
+PUT {{baseUrl}}/tenant/suppliers/{{supplierId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "name": "Premium Coffee Beans",
+  "contactName": "Jane Roaster",
+  "phone": "09777777777",
+  "isActive": true
+}
+
+### Delete Supplier
+
+# @name deleteSupplier
+DELETE {{baseUrl}}/tenant/suppliers/{{supplierId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - PURCHASE ORDERS
+### ============================================
+
+### Create a Purchase Order
+
+# @name createPO
+POST {{baseUrl}}/tenant/purchase-orders/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "supplierId": "{{supplierId}}",
-  "status": "DRAFT",
+  "status": "PENDING",
+  "orderDate": "2026-06-11T00:00:00Z",
+  "expectedDate": "2026-06-25T00:00:00Z",
   "subTotal": 150.0,
-  "grandTotal": 150.0,
+  "taxAmount": 7.5,
+  "grandTotal": 157.5,
   "userId": "{{userId}}",
+  "notes": "First order",
   "items": [
     {
       "productId": "{{productId}}",
@@ -172,25 +444,61 @@ Authorization: Bearer {{authToken}}
 @poId = {{createPO.response.body.id}}
 
 ### Get All Purchase Orders
-GET {{baseUrl}}/purchase-orders
+
+# @name getPOs
+GET {{baseUrl}}/tenant/purchase-orders/
 Authorization: Bearer {{authToken}}
 
-### Receive Purchase Order (Increments Stock)
-POST {{baseUrl}}/purchase-orders/{{poId}}/receive
+### Get Purchase Order by ID
+
+# @name getPOById
+GET {{baseUrl}}/tenant/purchase-orders/{{poId}}
 Authorization: Bearer {{authToken}}
 
+### Update Purchase Order
 
-### ============================================
-### ORDERS & SALES
-### ============================================
-
-### Create an Order
-# @name createOrder
-POST {{baseUrl}}/orders
+# @name updatePO
+PUT {{baseUrl}}/tenant/purchase-orders/{{poId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "status": "APPROVED",
+  "expectedDate": "2026-06-28T00:00:00Z",
+  "notes": "Approved by manager"
+}
+
+### Receive Purchase Order (Increments Stock)
+
+# @name receivePO
+POST {{baseUrl}}/tenant/purchase-orders/{{poId}}/receive
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "storeId": "{{storeId}}",
+  "userId": "{{userId}}"
+}
+
+### Delete Purchase Order
+
+# @name deletePO
+DELETE {{baseUrl}}/tenant/purchase-orders/{{poId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - ORDERS & SALES
+### ============================================
+
+### Create an Order
+
+# @name createOrder
+POST {{baseUrl}}/tenant/orders/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "subTotal": 7.0,
   "taxAmount": 0.5,
   "discountAmount": 0,
@@ -201,11 +509,13 @@ Authorization: Bearer {{authToken}}
   "paymentStatus": "PAID",
   "userId": "{{userId}}",
   "customerId": "{{customerId}}",
+  "storeId": "{{storeId}}",
   "items": [
     {
       "productId": "{{productId}}",
       "quantity": 2,
       "unitPrice": 3.5,
+      "discountAmount": 0,
       "subTotal": 7.0
     }
   ]
@@ -214,56 +524,109 @@ Authorization: Bearer {{authToken}}
 @orderId = {{createOrder.response.body.id}}
 
 ### Get All Orders
-GET {{baseUrl}}/orders
+
+# @name getOrders
+GET {{baseUrl}}/tenant/orders/
 Authorization: Bearer {{authToken}}
 
 ### Get Order Details
-GET {{baseUrl}}/orders/{{orderId}}
+
+# @name getOrderById
+GET {{baseUrl}}/tenant/orders/{{orderId}}
 Authorization: Bearer {{authToken}}
 
+### Update Order Status
 
-### ============================================
-### PAYMENTS
-### ============================================
-
-### Create a Payment
-# @name createPayment
-POST {{baseUrl}}/payments
+# @name updateOrderStatus
+PATCH {{baseUrl}}/tenant/orders/{{orderId}}/status
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "status": "COMPLETED"
+}
+
+### Delete Order
+
+# @name deleteOrder
+DELETE {{baseUrl}}/tenant/orders/{{orderId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - PAYMENTS
+### ============================================
+
+### Create a Payment
+
+# @name createPayment
+POST {{baseUrl}}/tenant/payments/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "orderId": "{{orderId}}",
   "amount": 7.5,
   "method": "KBZ_PAY",
   "referenceNumber": "TXN-123456",
-  "processedBy": "{{userId}}"
+  "status": "COMPLETED",
+  "processedById": "{{userId}}"
 }
 
+@paymentId = {{createPayment.response.body.id}}
+
 ### Get All Payments
-GET {{baseUrl}}/payments
+
+# @name getPayments
+GET {{baseUrl}}/tenant/payments/
 Authorization: Bearer {{authToken}}
 
+### Get Payment by ID
 
-### ============================================
-### RETURNS
-### ============================================
+# @name getPaymentById
+GET {{baseUrl}}/tenant/payments/{{paymentId}}
+Authorization: Bearer {{authToken}}
 
-### Create a Return
-POST {{baseUrl}}/returns
+### Update Payment
+
+# @name updatePayment
+PUT {{baseUrl}}/tenant/payments/{{paymentId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "status": "REFUNDED"
+}
+
+### Delete Payment
+
+# @name deletePayment
+DELETE {{baseUrl}}/tenant/payments/{{paymentId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - RETURNS
+### ============================================
+
+### Create a Return
+
+# @name createReturn
+POST {{baseUrl}}/tenant/returns/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
   "orderId": "{{orderId}}",
   "customerId": "{{customerId}}",
   "totalAmount": 3.5,
   "refundMethod": "CASH",
+  "refundStatus": "PENDING",
   "reason": "Wrong item delivered",
-  "approvedBy": "{{userId}}",
+  "approvedById": "{{userId}}",
   "items": [
     {
-      "orderItemId": "{{createOrder.response.body.items[0].id}}",
+      "orderItemId": "ITEM-ID-HERE",
       "quantity": 1,
       "refundAmount": 3.5,
       "reason": "Damaged"
@@ -271,20 +634,52 @@ Authorization: Bearer {{authToken}}
   ]
 }
 
+@returnId = {{createReturn.response.body.id}}
+
+### Get All Returns
+
+# @name getReturns
+GET {{baseUrl}}/tenant/returns/
+Authorization: Bearer {{authToken}}
+
+### Get Return by ID
+
+# @name getReturnById
+GET {{baseUrl}}/tenant/returns/{{returnId}}
+Authorization: Bearer {{authToken}}
+
+### Delete Return
+
+# @name deleteReturn
+DELETE {{baseUrl}}/tenant/returns/{{returnId}}
+Authorization: Bearer {{authToken}}
+
 ### ============================================
-### INVENTORY MANAGEMENT
+### TENANT - INVENTORY MANAGEMENT
 ### ============================================
 
+### Get Inventory
+
+# @name getInventory
+GET {{baseUrl}}/tenant/inventory/
+Authorization: Bearer {{authToken}}
+
 ### Get Stock Movements
-GET {{baseUrl}}/inventory/movements
+
+# @name getMovements
+GET {{baseUrl}}/tenant/inventory/movements/
 Authorization: Bearer {{authToken}}
 
 ### Create Stock Adjustment (Manual)
-POST {{baseUrl}}/inventory/movements
+
+# @name createMovement
+POST {{baseUrl}}/tenant/inventory/movements/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "tenantId": "{{tenantId}}",
+  "storeId": "{{storeId}}",
   "productId": "{{productId}}",
   "quantity": 10,
   "type": "ADJUSTMENT",
@@ -295,11 +690,14 @@ Authorization: Bearer {{authToken}}
 }
 
 ### Create Inventory Count
-POST {{baseUrl}}/inventory/counts
+
+# @name createInventoryCount
+POST {{baseUrl}}/tenant/inventory/counts/
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "tenantId": "{{tenantId}}",
   "storeId": "{{storeId}}",
   "scheduledDate": "2026-12-31T00:00:00Z",
   "userId": "{{userId}}",
@@ -313,62 +711,504 @@ Authorization: Bearer {{authToken}}
   ]
 }
 
+@inventoryCountId = {{createInventoryCount.response.body.id}}
+
+### Get All Inventory Counts
+
+# @name getInventoryCounts
+GET {{baseUrl}}/tenant/inventory/counts/
+Authorization: Bearer {{authToken}}
+
 ### ============================================
-### SESSIONS
+### TENANT - SESSIONS (Cashier Sessions)
 ### ============================================
 
+### Get All Sessions
+
+# @name getSessions
+GET {{baseUrl}}/tenant/sessions/
+Authorization: Bearer {{authToken}}
+
+### Get Active Session for User
+
+# @name getActiveSession
+GET {{baseUrl}}/tenant/sessions/active/{{userId}}?storeId={{storeId}}
+Authorization: Bearer {{authToken}}
+
 ### Open Cashier Session
+
 # @name openSession
-POST {{baseUrl}}/sessions/open
+POST {{baseUrl}}/tenant/sessions/open
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
+  "tenantId": "{{tenantId}}",
   "userId": "{{userId}}",
-  "openingBalance": 500
+  "openingBalance": 500,
+  "storeId": "{{storeId}}",
+  "notes": "Morning shift"
 }
 
 @sessionId = {{openSession.response.body.id}}
 
-### Get All Sessions
-GET {{baseUrl}}/sessions
-Authorization: Bearer {{authToken}}
+### Close Cashier Session
 
-### ============================================
-### STAFF MANAGEMENT
-### ============================================
-
-### Get All Staff
-GET {{baseUrl}}/staff
-Authorization: Bearer {{authToken}}
-
-### ============================================
-### PROMOTIONS
-### ============================================
-
-### Create a Promotion
-POST {{baseUrl}}/promotions
+# @name closeSession
+POST {{baseUrl}}/tenant/sessions/{{sessionId}}/close
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
-  "code": "SUMMER2026",
-  "name": "Summer Sale",
-  "discountType": "PERCENTAGE",
-  "discountValue": 10,
-  "startDate": "2026-06-01T00:00:00Z",
-  "endDate": "2026-08-31T00:00:00Z",
-  "productIds": ["{{productId}}"]
+  "closingBalance": 1500,
+  "expectedBalance": 1480,
+  "discrepancy": 20,
+  "cashSales": 800,
+  "cardSales": 500,
+  "digitalSales": 200,
+  "notes": "End of day"
 }
 
 ### ============================================
-### SYSTEM
+### TENANT - STAFF MANAGEMENT
+### ============================================
+
+### Get All Staff
+
+# @name getStaff
+GET {{baseUrl}}/tenant/staff/
+Authorization: Bearer {{authToken}}
+
+### Create Staff Member
+
+# @name createStaff
+POST {{baseUrl}}/tenant/staff/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "username": "cashier1",
+  "email": "cashier@minipos.com",
+  "name": "Cashier User",
+  "password": "cashier123",
+  "storeId": "{{storeId}}",
+  "role": "CASHIER",
+  "permissions": ["VIEW_REPORTS", "EDIT_PRICES"],
+  "isActive": true
+}
+
+@staffId = {{createStaff.response.body.id}}
+
+### Get Staff by ID
+
+# @name getStaffById
+GET {{baseUrl}}/tenant/staff/{{staffId}}
+Authorization: Bearer {{authToken}}
+
+### Update Staff
+
+# @name updateStaff
+PUT {{baseUrl}}/tenant/staff/{{staffId}}
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "name": "Senior Cashier",
+  "role": "MANAGER",
+  "permissions": ["VIEW_REPORTS", "EDIT_PRICES", "MANAGE_STAFF"],
+  "isActive": true
+}
+
+### Delete Staff
+
+# @name deleteStaff
+DELETE {{baseUrl}}/tenant/staff/{{staffId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - PROMOTIONS
+### ============================================
+
+### Get All Promotions
+
+# @name getPromotions
+GET {{baseUrl}}/tenant/promotions/
+Authorization: Bearer {{authToken}}
+
+### Create a Promotion
+
+# @name createPromotion
+POST {{baseUrl}}/tenant/promotions/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "code": "SUMMER2026",
+  "name": "Summer Sale",
+  "description": "10% off on all items",
+  "discountType": "PERCENTAGE",
+  "discountValue": 10,
+  "minPurchase": 5,
+  "startDate": "2026-06-01T00:00:00Z",
+  "endDate": "2026-08-31T00:00:00Z",
+  "usageLimit": 1000,
+  "perUserLimit": 5,
+  "isActive": true,
+  "productIds": ["{{productId}}"],
+  "categoryIds": ["{{categoryId}}"]
+}
+
+@promotionId = {{createPromotion.response.body.id}}
+
+### Get Promotion by ID
+
+# @name getPromotionById
+GET {{baseUrl}}/tenant/promotions/{{promotionId}}
+Authorization: Bearer {{authToken}}
+
+### Update Promotion
+
+# @name updatePromotion
+PUT {{baseUrl}}/tenant/promotions/{{promotionId}}
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "discountValue": 15,
+  "endDate": "2026-09-30T00:00:00Z"
+}
+
+### Delete Promotion
+
+# @name deletePromotion
+DELETE {{baseUrl}}/tenant/promotions/{{promotionId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - STOCK TRANSFERS
+### ============================================
+
+### Create Stock Transfer
+
+# @name createStockTransfer
+POST {{baseUrl}}/tenant/stock-transfers/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "fromStoreId": "{{storeId}}",
+  "toStoreId": "OTHER-STORE-ID",
+  "userId": "{{userId}}",
+  "notes": "Transfer for promotion",
+  "items": [
+    {
+      "productId": "{{productId}}",
+      "quantity": 50
+    }
+  ]
+}
+
+@transferId = {{createStockTransfer.response.body.id}}
+
+### Get All Stock Transfers
+
+# @name getStockTransfers
+GET {{baseUrl}}/tenant/stock-transfers/
+Authorization: Bearer {{authToken}}
+
+### Get Stock Transfer by ID
+
+# @name getStockTransferById
+GET {{baseUrl}}/tenant/stock-transfers/{{transferId}}
+Authorization: Bearer {{authToken}}
+
+### Complete Stock Transfer
+
+# @name completeStockTransfer
+POST {{baseUrl}}/tenant/stock-transfers/{{transferId}}/complete
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "userId": "{{userId}}"
+}
+
+### Delete Stock Transfer
+
+# @name deleteStockTransfer
+DELETE {{baseUrl}}/tenant/stock-transfers/{{transferId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - TAX RATES
+### ============================================
+
+### Get All Tax Rates
+
+# @name getTaxRates
+GET {{baseUrl}}/tenant/tax-rates/
+Authorization: Bearer {{authToken}}
+
+### Create Tax Rate
+
+# @name createTaxRate
+POST {{baseUrl}}/tenant/tax-rates/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "name": "VAT",
+  "rate": 5,
+  "isCompound": false,
+  "appliesTo": ["products"],
+  "validFrom": "2026-01-01T00:00:00Z"
+}
+
+@taxRateId = {{createTaxRate.response.body.id}}
+
+### ============================================
+### TENANT - EXPENSES
+### ============================================
+
+### Get Expense Categories
+
+# @name getExpenseCategories
+GET {{baseUrl}}/tenant/expenses/categories/
+Authorization: Bearer {{authToken}}
+
+### Create Expense Category
+
+# @name createExpenseCategory
+POST {{baseUrl}}/tenant/expenses/categories/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "name": "Utilities",
+  "description": "Electricity, water, internet"
+}
+
+@expenseCategoryId = {{createExpenseCategory.response.body.id}}
+
+### Create Expense
+
+# @name createExpense
+POST {{baseUrl}}/tenant/expenses/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "categoryId": "{{expenseCategoryId}}",
+  "amount": 150.00,
+  "userId": "{{userId}}",
+  "storeId": "{{storeId}}",
+  "description": "Electricity bill",
+  "expenseDate": "2026-06-11T00:00:00Z"
+}
+
+@expenseId = {{createExpense.response.body.id}}
+
+### ============================================
+### TENANT - GIFT CARDS
+### ============================================
+
+### Get All Gift Cards
+
+# @name getGiftCards
+GET {{baseUrl}}/tenant/gift-cards/
+Authorization: Bearer {{authToken}}
+
+### Create Gift Card
+
+# @name createGiftCard
+POST {{baseUrl}}/tenant/gift-cards/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "initialAmount": 100,
+  "customerId": "{{customerId}}",
+  "expiresAt": "2027-12-31T00:00:00Z"
+}
+
+@giftCardId = {{createGiftCard.response.body.id}}
+
+### Lookup Gift Card by Number
+
+# @name lookupGiftCard
+GET {{baseUrl}}/tenant/gift-cards/lookup/GC123456
+Authorization: Bearer {{authToken}}
+
+### Reload Gift Card
+
+# @name reloadGiftCard
+POST {{baseUrl}}/tenant/gift-cards/{{giftCardId}}/reload
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "amount": 50
+}
+
+### ============================================
+### TENANT - CUSTOMER WALLETS
+### ============================================
+
+### Get All Wallets
+
+# @name getWallets
+GET {{baseUrl}}/tenant/wallets/
+Authorization: Bearer {{authToken}}
+
+### Get Wallet by Customer
+
+# @name getWalletByCustomer
+GET {{baseUrl}}/tenant/wallets/customer/{{customerId}}
+Authorization: Bearer {{authToken}}
+
+### Create Wallet Transaction
+
+# @name createWalletTransaction
+POST {{baseUrl}}/tenant/wallets/transactions
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "customerId": "{{customerId}}",
+  "amount": 50,
+  "type": "DEPOSIT",
+  "description": "Customer deposit"
+}
+
+### ============================================
+### TENANT - NOTIFICATIONS
+### ============================================
+
+### Get Notifications
+
+# @name getNotifications
+GET {{baseUrl}}/tenant/notifications/
+Authorization: Bearer {{authToken}}
+
+### Create Notification
+
+# @name createNotification
+POST {{baseUrl}}/tenant/notifications/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "userId": "{{userId}}",
+  "type": "LOW_STOCK",
+  "title": "Low Stock Alert",
+  "message": "Product Espresso is running low. Only 10 units left."
+}
+
+@notificationId = {{createNotification.response.body.id}}
+
+### Mark Notification as Read
+
+# @name markRead
+PATCH {{baseUrl}}/tenant/notifications/{{notificationId}}/read
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - API KEYS
+### ============================================
+
+### Get API Keys
+
+# @name getApiKeys
+GET {{baseUrl}}/tenant/api-keys/
+Authorization: Bearer {{authToken}}
+
+### Create API Key
+
+# @name createApiKey
+POST {{baseUrl}}/tenant/api-keys/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "userId": "{{userId}}",
+  "name": "Integration Key",
+  "permissions": ["read:products", "write:orders"],
+  "expiresAt": "2027-12-31T00:00:00Z"
+}
+
+@apiKeyId = {{createApiKey.response.body.id}}
+
+### Delete API Key
+
+# @name deleteApiKey
+DELETE {{baseUrl}}/tenant/api-keys/{{apiKeyId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### TENANT - WEBHOOKS
+### ============================================
+
+### Get Webhooks
+
+# @name getWebhooks
+GET {{baseUrl}}/tenant/webhooks/
+Authorization: Bearer {{authToken}}
+
+### Create Webhook
+
+# @name createWebhook
+POST {{baseUrl}}/tenant/webhooks/
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "tenantId": "{{tenantId}}",
+  "name": "Order Notification",
+  "url": "https://webhook.site/order-events",
+  "events": ["order.created", "order.updated"]
+}
+
+@webhookId = {{createWebhook.response.body.id}}
+
+### Update Webhook
+
+# @name updateWebhook
+PUT {{baseUrl}}/tenant/webhooks/{{webhookId}}
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "isActive": true
+}
+
+### Delete Webhook
+
+# @name deleteWebhook
+DELETE {{baseUrl}}/tenant/webhooks/{{webhookId}}
+Authorization: Bearer {{authToken}}
+
+### ============================================
+### SYSTEM - AUDIT LOGS
 ### ============================================
 
 ### Get Audit Logs
-GET {{baseUrl}}/audit-logs
-Authorization: Bearer {{authToken}}
 
-### Get Notifications
-GET {{baseUrl}}/notifications?userId={{userId}}
-Authorization: Bearer {{authToken}}
+# @name getAuditLogs
+GET {{baseUrl}}/platform/audit-logs/
+Authorization: Bearer {{platformToken}}
+
+### Get Audit Log by ID
+
+# @name getAuditLogById
+GET {{baseUrl}}/platform/audit-logs/{{auditLogId}}
+Authorization: Bearer {{platformToken}}

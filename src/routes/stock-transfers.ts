@@ -1,144 +1,326 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
+import { adjustInventory } from "../lib/inventory";
+import { TransferStatus } from "@prisma/client";
 
 export const stockTransferRoutes = new Elysia({
   prefix: "/stock-transfers",
 })
-  .get("/", async () => {
-    return prisma.stockTransfer.findMany({
-      include: {
-        fromStore: true,
-        toStore: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
-      },
-      orderBy: {
-        requestedAt: "desc",
-      },
-    });
-  })
-  .get("/:id", async ({ params, set }) => {
-    const transfer = await prisma.stockTransfer.findUnique({
-      where: { id: params.id },
-      include: {
-        fromStore: true,
-        toStore: true,
-        items: {
-          include: {
-            product: true,
-          },
-        },
-      },
-    });
-    if (!transfer) { set.status = 404; return "Stock Transfer not found"; }return transfer;
-  })
-  .post(
+  // 🔐 Multi-Tenant Authentication Middleware ချိတ်ဆက်ခြင်း
+  .use(tenantAuthMiddleware)
+
+  /**
+   * 1. GET ALL STOCK TRANSFERS WITH TENANT ISOLATION
+   */
+  .get(
     "/",
-    async ({ body, set }) => {
-      const transferNumber = `TRF-${Date.now()}`;
-      set.status = 201;
-      return prisma.stockTransfer.create({
-        data: {
-          transferNumber,
-          fromStoreId: body.fromStoreId,
-          toStoreId: body.toStoreId,
-          status: "PENDING",
-          requestedBy: body.userId,
-          notes: body.notes,
-          items: {
-            create: body.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-            })),
+    async ({ tenantId, query }) => {
+      const page = query.page ? parseInt(query.page as string) : 1;
+      const limit = query.limit ? parseInt(query.limit as string) : 20;
+      const skip = (page - 1) * limit;
+
+      const whereCondition: any = {
+        tenantId,
+        ...(query.fromStoreId
+          ? { fromStoreId: query.fromStoreId as string }
+          : {}),
+        ...(query.toStoreId ? { toStoreId: query.toStoreId as string } : {}),
+        ...(query.status ? { status: query.status as TransferStatus } : {}),
+      };
+
+      const [total, stockTransfers] = await prisma.$transaction([
+        prisma.stockTransfer.count({ where: whereCondition }),
+        prisma.stockTransfer.findMany({
+          where: whereCondition,
+          include: {
+            fromStore: true,
+            toStore: true,
+            requestedBy: { select: { id: true, name: true } },
+            approvedBy: { select: { id: true, name: true } },
+            items: { include: { product: true, variant: true } },
           },
+          orderBy: { requestedAt: "desc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        stockTransfers,
+      };
+    },
+    {
+      query: t.Optional(
+        t.Object({
+          page: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          fromStoreId: t.Optional(t.String()),
+          toStoreId: t.Optional(t.String()),
+          status: t.Optional(t.String()),
+        }),
+      ),
+    },
+  )
+
+  /**
+   * 2. GET SINGLE STOCK TRANSFER BY ID
+   */
+  .get(
+    "/:id",
+    async ({ params: { id }, tenantId, set }) => {
+      const transfer = await prisma.stockTransfer.findFirst({
+        where: { id, tenantId },
+        include: {
+          fromStore: true,
+          toStore: true,
+          requestedBy: { select: { id: true, name: true, email: true } },
+          approvedBy: { select: { id: true, name: true } },
+          items: { include: { product: true, variant: true } },
         },
       });
+
+      if (!transfer) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Stock Transfer record not found or access denied.",
+        };
+      }
+
+      return { success: true, transfer };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  /**
+   * 3. POST: CREATE NEW STOCK TRANSFER REQUEST (PENDING STATE)
+   */
+  .post(
+    "/",
+    async ({ body, tenantId, userId, set }) => {
+      if (body.fromStoreId === body.toStoreId) {
+        set.status = 400;
+        return {
+          success: false,
+          message: "Source store and destination store cannot be the same.",
+        };
+      }
+
+      const transferNumber = `TRF-${Date.now()}`;
+
+      const transfer = await prisma.$transaction(async (tx) => {
+        const created = await tx.stockTransfer.create({
+          data: {
+            tenantId,
+            transferNumber,
+            fromStoreId: body.fromStoreId,
+            toStoreId: body.toStoreId,
+            status: TransferStatus.PENDING,
+            requestedById: userId, // Token မှရလာသော Requester User ID
+            notes: body.notes,
+            items: {
+              create: body.items.map((item) => ({
+                tenantId,
+                productId: item.productId,
+                // 💡 TypeScript Safety အတွက် Explicit Null Mapping ပြုလုပ်ခြင်း
+                variantId: item.variantId ?? null,
+                quantity: item.quantity,
+              })),
+            },
+          },
+          include: { items: true },
+        });
+
+        // Audit Log မှတ်တမ်းတင်ခြင်း
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            action: "CREATE",
+            entity: "StockTransfer",
+            entityId: created.id,
+            newData: JSON.parse(JSON.stringify(created)),
+          },
+        });
+
+        return created;
+      });
+
+      set.status = 201;
+      return {
+        success: true,
+        message: "Stock transfer requested successfully.",
+        transfer,
+      };
     },
     {
       body: t.Object({
         fromStoreId: t.String(),
         toStoreId: t.String(),
-        userId: t.String(),
         notes: t.Optional(t.String()),
         items: t.Array(
           t.Object({
             productId: t.String(),
-            quantity: t.Integer(),
+            variantId: t.Optional(t.String()),
+            quantity: t.Integer({ minimum: 1 }),
           }),
         ),
       }),
     },
   )
+
+  /**
+   * 4. POST: APPROVE & COMPLETE STOCK TRANSFER (REAL-TIME TWO-WAY INVENTORY BALANCE)
+   */
   .post(
     "/:id/complete",
-    async ({ params, body, set }) => {
-      set.status = 201;
-      return prisma.$transaction(async (tx: any) => {
-        const transfer = await tx.stockTransfer.update({
-          where: { id: params.id },
+    async ({ params: { id }, tenantId, userId, set }) => {
+      // ၁။ ဘောင်ချာရှိမရှိနှင့် အခြေအနေအား Strict Check လုပ်ခြင်း
+      const existingTransfer = await prisma.stockTransfer.findFirst({
+        where: { id, tenantId },
+        include: { items: true },
+      });
+
+      if (!existingTransfer) {
+        set.status = 404;
+        return { success: false, message: "Stock Transfer ticket not found." };
+      }
+
+      if (existingTransfer.status === TransferStatus.RECEIVED) {
+        set.status = 400;
+        return {
+          success: false,
+          message:
+            "This stock transfer has already been completed and received.",
+        };
+      }
+
+      const transfer = await prisma.$transaction(async (tx) => {
+        const updated = await tx.stockTransfer.update({
+          where: { id },
           data: {
-            status: "COMPLETED",
+            status: TransferStatus.RECEIVED,
             completedAt: new Date(),
-            approvedBy: body.userId,
+            approvedById: userId, // Current logged in Manager/Approver
           },
-          include: {
-            items: true,
-          },
+          include: { items: true },
         });
 
-        for (const item of transfer.items) {
-          // Decrement from 'fromStore' and increment 'toStore'
-          // Note: In this simple schema, products have a global stockQuantity.
-          // For a true multi-store, we'd have StoreProduct or similar.
-          // However, based on the schema, stockQuantity is on Product.
-          // If the user intends for multi-store stock tracking, they might need a StoreProduct model.
-          // For now, I'll just adjust the global stock if that's what's available,
-          // or assume the transfer itself records the movement.
-
-          // Actually, let's just record the movement for now as the schema doesn't have StoreProduct.
-          // BUT, StockMovement could be used.
-
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              quantity: -item.quantity,
-              previousStock: 0, // Should be fetched
-              newStock: 0, // Should be fetched
-              type: "TRANSFER_OUT",
-              referenceId: transfer.id,
-              referenceType: "StockTransfer",
-              userId: body.userId,
-            },
+        for (const item of updated.items) {
+          // 🚀 (က) ထွက်ခွာမည့်ဆိုင်ခွဲမှ စတော့ခ်အား နှုတ်ပယ်ခြင်း (TRANSFER_OUT)
+          await adjustInventory(tx, {
+            tenantId,
+            storeId: updated.fromStoreId,
+            productId: item.productId,
+            variantId: item.variantId ?? null, // 💡 Type-safe explicit null
+            quantityDelta: -item.quantity, // 👈 နှုတ်ကိန်းပြပါသည်
+            userId,
+            type: "TRANSFER_OUT",
+            referenceId: updated.id,
+            referenceType: "StockTransfer",
+            reason: `Transfer Out to Store ID: ${updated.toStoreId}`,
           });
 
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              quantity: item.quantity,
-              previousStock: 0, // Should be fetched
-              newStock: 0, // Should be fetched
-              type: "TRANSFER_IN",
-              referenceId: transfer.id,
-              referenceType: "StockTransfer",
-              userId: body.userId,
-            },
+          // 🚀 (ခ) ဆိုက်ရောက်မည့်ဆိုင်ခွဲထဲသို့ စတော့ခ်အား ပေါင်းထည့်ခြင်း (TRANSFER_IN)
+          await adjustInventory(tx, {
+            tenantId,
+            storeId: updated.toStoreId,
+            productId: item.productId,
+            variantId: item.variantId ?? null, // 💡 Type-safe explicit null
+            quantityDelta: item.quantity, // 👈 အပေါင်းကိန်းပြပါသည်
+            userId,
+            type: "TRANSFER_IN",
+            referenceId: updated.id,
+            referenceType: "StockTransfer",
+            reason: `Transfer In from Store ID: ${updated.fromStoreId}`,
+          });
+
+          // (ဂ) ဘောင်ချာ Item Table ထဲတွင် လက်ခံရရှိသည့် အရေအတွက်အား Sync လုပ်ပေးခြင်း
+          await tx.stockTransferItem.update({
+            where: { id: item.id },
+            data: { receivedQuantity: item.quantity },
           });
         }
 
-        return transfer;
+        // Audit Log Tracker Operation
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            action: "APPROVE",
+            entity: "StockTransfer",
+            entityId: updated.id,
+            oldData: JSON.parse(JSON.stringify(existingTransfer)),
+            newData: JSON.parse(JSON.stringify(updated)),
+          },
+        });
+
+        return updated;
+      });
+
+      return {
+        success: true,
+        message:
+          "Stock transfer completed and quantities inventory successfully updated across stores.",
+        transfer,
+      };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  /**
+   * 5. DELETE: DELETE/CANCEL PENDING STOCK TRANSFER
+   */
+  .delete(
+    "/:id",
+    async ({ params: { id }, tenantId, userId, set }) => {
+      const transfer = await prisma.stockTransfer.findFirst({
+        where: { id, tenantId },
+      });
+
+      if (!transfer) {
+        set.status = 404;
+        return { success: false, message: "Stock Transfer ticket not found." };
+      }
+
+      // စတော့ခ်တွေ အပြန်အလှန် လွှဲပြောင်းပြီးသားဖြစ်တဲ့ RECEIVED အဆင့်ရောက်ရင် ဖျက်ခွင့်မပြုပါ
+      if (transfer.status === TransferStatus.RECEIVED) {
+        set.status = 400;
+        return {
+          success: false,
+          message:
+            "Cannot delete or cancel a stock transfer that has already been received.",
+        };
+      }
+
+      return await prisma.$transaction(async (tx) => {
+        // တွဲဖက်ပစ္စည်းစာရင်းများကို အရင်ဖျက်သိမ်းခြင်း
+        await tx.stockTransferItem.deleteMany({ where: { transferId: id } });
+
+        const deletedTransfer = await tx.stockTransfer.delete({
+          where: { id },
+        });
+
+        // Log Critical Activity
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            action: "DELETE",
+            entity: "StockTransfer",
+            entityId: id,
+            oldData: JSON.parse(JSON.stringify(deletedTransfer)),
+          },
+        });
+
+        return {
+          success: true,
+          message: "Stock transfer request ticket successfully discarded.",
+        };
       });
     },
-    {
-      body: t.Object({
-        userId: t.String(),
-      }),
-    },
-  )
-  .delete("/:id", async ({ params, set }) => {
-    return prisma.stockTransfer.delete({
-      where: { id: params.id },
-    });
-  });
+    { params: t.Object({ id: t.String() }) },
+  );
