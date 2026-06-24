@@ -93,7 +93,7 @@ export const purchaseOrderRoutes = new Elysia({
     async ({ body, tenantId, userId, set }) => {
       const poNumber = `PO-${Date.now()}`;
 
-      const po = await prisma.$transaction(async (tx) => {
+      const po = await prisma.$transaction(async (tx: any) => {
         const created = await tx.purchaseOrder.create({
           data: {
             tenantId,
@@ -198,7 +198,7 @@ export const purchaseOrderRoutes = new Elysia({
         };
       }
 
-      const po = await prisma.$transaction(async (tx) => {
+      const po = await prisma.$transaction(async (tx: any) => {
         const updated = await tx.purchaseOrder.update({
           where: { id },
           data: {
@@ -357,7 +357,7 @@ export const purchaseOrderRoutes = new Elysia({
         };
       }
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: any) => {
         // Cascade delete order items first
         await tx.purchaseOrderItem.deleteMany({ where: { poId: id } });
 

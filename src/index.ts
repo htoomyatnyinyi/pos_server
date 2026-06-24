@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { Prisma } from "@prisma/client";
+// import { Prisma } from "@prisma/client";
 import { cors } from "@elysiajs/cors";
 import { jwt } from "@elysiajs/jwt";
 import { swagger } from "@elysiajs/swagger";
@@ -54,58 +54,58 @@ const app = new Elysia()
     }),
   )
 
-  .onError(({ code, error, set }) => {
-    const err = error as any;
-    console.error("Global Error Handler:", {
-      code,
-      message: err.message,
-      cause: err.cause,
-      stack: err.stack,
-    });
-    if (code === "VALIDATION") {
-      set.status = 400;
-      const errorsList = Array.isArray(error.all)
-        ? error.all
-        : [...(error.all || [])];
-      return {
-        success: false,
-        message: "Validation failed",
-        errors: errorsList.map((e: any) => ({
-          path: e.path,
-          message: e.message,
-          expected: e.schema?.type || "unknown",
-        })),
-      };
-    }
+  // .onError(({ code, error, set }) => {
+  //   const err = error as any;
+  //   console.error("Global Error Handler:", {
+  //     code,
+  //     message: err.message,
+  //     cause: err.cause,
+  //     stack: err.stack,
+  //   });
+  //   if (code === "VALIDATION") {
+  //     set.status = 400;
+  //     const errorsList = Array.isArray(error.all)
+  //       ? error.all
+  //       : [...(error.all || [])];
+  //     return {
+  //       success: false,
+  //       message: "Validation failed",
+  //       errors: errorsList.map((e: any) => ({
+  //         path: e.path,
+  //         message: e.message,
+  //         expected: e.schema?.type || "unknown",
+  //       })),
+  //     };
+  //   }
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") {
-        set.status = 409;
-        return {
-          success: false,
-          message: `Unique constraint failed: ${error.meta?.target || "Unknown field"}`,
-          code: "CONFLICT",
-        };
-      }
-      if (error.code === "P2025") {
-        set.status = 404;
-        return {
-          success: false,
-          message: "Record not found",
-          code: "NOT_FOUND",
-        };
-      }
-    }
+  //   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+  //     if (error.code === "P2002") {
+  //       set.status = 409;
+  //       return {
+  //         success: false,
+  //         message: `Unique constraint failed: ${error.meta?.target || "Unknown field"}`,
+  //         code: "CONFLICT",
+  //       };
+  //     }
+  //     if (error.code === "P2025") {
+  //       set.status = 404;
+  //       return {
+  //         success: false,
+  //         message: "Record not found",
+  //         code: "NOT_FOUND",
+  //       };
+  //     }
+  //   }
 
-    set.status = 500;
-    return {
-      success: false,
-      message:
-        process.env.NODE_ENV === "development"
-          ? (error as Error).message
-          : "Something went wrong",
-    };
-  })
+  //   set.status = 500;
+  //   return {
+  //     success: false,
+  //     message:
+  //       process.env.NODE_ENV === "development"
+  //         ? (error as Error).message
+  //         : "Something went wrong",
+  //   };
+  // })
   .get("/", () => ({
     success: true,
     status: "ok",

@@ -168,7 +168,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         };
       }
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: any) => {
         let categoryId = body.categoryId;
         if (!categoryId && body.categoryName) {
           const categorySlug = slugify(body.categoryName);
@@ -194,7 +194,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         const product = await tx.product.create({
           data: {
             tenantId,
-            sku: body.sku.trim(),
+            sku: body.sku?.trim(),
             barcode: body.barcode?.trim(),
             name: body.name.trim(),
             description: body.description,
@@ -204,20 +204,24 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             wholesalePrice: body.wholesalePrice,
             categoryId,
             supplierId: body.supplierId,
-            manufacturingDate: body.manufacturingDate ? new Date(body.manufacturingDate) : undefined,
+            manufacturingDate: body.manufacturingDate
+              ? new Date(body.manufacturingDate)
+              : undefined,
             expiryDate: body.expiryDate ? new Date(body.expiryDate) : undefined,
             variants: body.variants
               ? {
                   create: body.variants.map((v) => ({
                     tenantId,
                     name: v.name.trim(),
-                    sku: v.sku.trim(),
+                    sku: v.sku?.trim(),
                     barcode: v.barcode?.trim(),
                     price: v.price, // 📝 Schema အတိုင်း 'price' ကို သုံးထားပါတယ်
                     costPrice: v.costPrice,
+                    wholesalePrice: v.wholesalePrice,
                     color: v.color,
                     size: v.size,
                     weight: v.weight,
+                    stock: v.stock,
                     isActive: v.isActive ?? true,
                   })),
                 }
@@ -262,7 +266,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     },
     {
       body: t.Object({
-        sku: t.String(),
+        sku: t.Optional(t.String()),
         barcode: t.Optional(t.String()),
         name: t.String(),
         description: t.Optional(t.String()),
@@ -283,11 +287,13 @@ export const productRoutes = new Elysia({ prefix: "/products" })
               name: t.String(),
               price: t.Number(),
               color: t.Optional(t.String()),
+              stock: t.Optional(t.Integer()),
               size: t.Optional(t.String()),
               weight: t.Optional(t.Number()),
               costPrice: t.Number(),
+              wholesalePrice: t.Optional(t.Number()),
               isActive: t.Optional(t.Boolean()),
-              sku: t.String(),
+              sku: t.Optional(t.String()),
               barcode: t.Optional(t.String()),
             }),
           ),
@@ -337,7 +343,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         }
       }
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: any) => {
         let categoryId = body.categoryId;
         if (!categoryId && body.categoryName) {
           const categorySlug = slugify(body.categoryName);
@@ -387,7 +393,9 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             wholesalePrice: body.wholesalePrice,
             categoryId: categoryId ?? undefined,
             supplierId: body.supplierId,
-            manufacturingDate: body.manufacturingDate ? new Date(body.manufacturingDate) : undefined,
+            manufacturingDate: body.manufacturingDate
+              ? new Date(body.manufacturingDate)
+              : undefined,
             expiryDate: body.expiryDate ? new Date(body.expiryDate) : undefined,
             isActive: body.isActive,
           },

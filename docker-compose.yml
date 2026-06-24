@@ -98,24 +98,24 @@ services:
       - dev
       - studio
 
-  # tunnel:
-  #   image: cloudflare/cloudflared:latest
-  #   container_name: pos_tunnel
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: pos_tunnel
 
-  #   command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate run
 
-  #   environment:
-  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
 
-  #   restart: unless-stopped
+    restart: unless-stopped
 
-  #   # depends_on:
-  #   #   - app
-  #   # app:
-  #   # condition: service_healthy
+    # depends_on:
+    #   - app
+    # app:
+    # condition: service_healthy
 
-  #   networks:
-  #     - mynetwork
+    networks:
+      - mynetwork
 
 volumes:
   pgdata:

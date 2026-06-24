@@ -135,7 +135,41 @@ export const sessionRoutes = new Elysia({
         };
       }
 
-      return await prisma.$transaction(async (tx) => {
+      /*
+       const register = await prisma.register.findUnique({
+        where: { id: body.registerId },
+      });
+
+      if (!register) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Register not found.",
+        };
+      }
+
+      return await prisma.$transaction(async (tx: any) => {
+        const session = await tx.session.create({
+          data: {
+            tenantId,
+            userId, // Auth Middleware မှရရှိလာသော Cashier User ID
+            // openingBalance: body.openingBalance,
+            // storeId,
+            storeId: register.storeId,
+            // registerId: body.registerId ?? null,
+            registerId: register.id,
+            // openingBalance: new Decimal(body.openingBalance),
+            openingBalance: new Decimal(register.openingBalance),
+            status: "OPEN",
+            notes: body.notes,
+            openedAt: new Date(),
+          },
+        });
+
+          // this flow is sugestion only can delete it.
+      */
+
+      return await prisma.$transaction(async (tx: any) => {
         const session = await tx.session.create({
           data: {
             tenantId,
@@ -198,7 +232,7 @@ export const sessionRoutes = new Elysia({
         };
       }
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: any) => {
         // ၂။ 💡 ခေါ်ယူမထားပါက လက်ရှိ DB ထဲက အရောင်းတန်ဖိုးများကို Dynamic ယူသုံးခြင်း
         const finalCashSales = body.cashSales ?? currentSession.cashSales;
         const finalCardSales = body.cardSales ?? currentSession.cardSales;

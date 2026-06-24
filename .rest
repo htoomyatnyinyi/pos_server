@@ -13,7 +13,7 @@ Content-Type: application/json
 
 {
   "name": "HTOO MYAT",
-  "email": "htomyat@gmail.com",
+  "email": "htoomyat@gmail.com",
   "password": "password123",
   "tenantName": "My Business",
   "tenantCode": "MYBIZ"
@@ -26,7 +26,7 @@ POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "email": "htomyat@gmail.com",
+  "email": "htoomyat@gmail.com",
   "password": "password123",
   "tenantCode": "MYBIZ"
 }
@@ -82,18 +82,19 @@ Authorization: {{platformToken}}
 
 
 ###
-@tenantId = {{createTenant.response.body.tenant.id}}
+# @tenantId = {{createTenant.response.body.tenant.id}}
 
+@tenantId = cmqozha9a000101oj4tr5och4
 ### Get Tenant by ID
 # @name getTenantById
-GET {{baseUrl}}/tenants/{{tenantId}}
+GET {{baseUrl}}/platform/tenants/{{tenantId}}
 # GET {{baseUrl}}/tenants/{{tenantId}}
 Authorization: Bearer {{platformToken}}
 
 ### Update Tenant
 
 # @name updateTenant
-PUT {{baseUrl}}/tenants/{{tenantId}}
+PUT {{baseUrl}}/platform/tenants/{{tenantId}}
 Content-Type: application/json
 Authorization: Bearer {{platformToken}}
 
@@ -134,8 +135,8 @@ Authorization: Bearer {{authToken}}
 
 ###
 # @storeId = {{createStore.response.body.stores.id}}
-@storeId = {{createStore.response.body.id}}
-
+# @storeId = {{createStore.response.body.id}}
+@storeId = cmqozhvsq000201ojg8cm4epy
 ### Get All Stores
 
 # @name getStores
@@ -151,7 +152,7 @@ Authorization: Bearer {{authToken}}
 
 ### Update Store
 
-# @name updateStore
+# @name updateStore 
 PUT {{baseUrl}}/tenant/stores/{{storeId}}
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
@@ -199,7 +200,9 @@ Authorization: Bearer {{authToken}}
 
 ###
 
-@categoryId = {{createCategory.response.body.id}}
+# @categoryId = {{createCategory.response.body.id}}
+@categoryId = cmqoyy0yg000d01qq65wc5vca
+
 
 ### Get Category by ID
 
@@ -238,7 +241,7 @@ Authorization: Bearer {{authToken}}
 GET {{baseUrl}}/tenant/products/
 Authorization: Bearer {{authToken}}
 
-### Create a Product (requires tenantId)
+### Create a Product (requires tenantId)cmqoyy0yg000d01qq65wc5vca
 
 # @name createProduct
 POST {{baseUrl}}/tenant/products/
@@ -247,22 +250,38 @@ Authorization: Bearer {{authToken}}
 
 {
   "tenantId": "{{tenantId}}",
-  "sku": "COF-001",
-  "barcode": "123456789",
-  "name": "Espresso",
+  "sku": "COF-004442444",
+  "barcode": "12342343256789",
+  "name": "Cappuccino",
   "description": "Strong black coffee",
   "brand": "Premium Roast",
   "costPrice": 1.5,
-  "sellingPrice": 3.5,
+  "wholesalePrice": 3.5,
+  "sellingPrice": 4.5,
+  
   "categoryId": "{{categoryId}}",
   "categoryName": "Beverages",
   "storeId": "{{storeId}}",
   "initialStock": 100,
   "userId": "{{userId}}",
-  "variants": []
+  "variants": [
+    {
+      "name": "Small",
+      "price": 1.0,
+      "stock": 10,
+      "sku": "SKU-033403342",
+      "barcode": "123456789",
+      "productId": "{{productId}}",
+      "costPrice": 0.5,
+      "wholesalePrice": 1.0,
+      "storeId": "{{storeId}}"
+    }
+  ]
 }
+###
 
-@productId = {{createProduct.response.body.id}}
+# @productId = {{createProduct.response.body.id}}
+@productId = cmqoz20ss000h01qqr0eoowtq
 
 ### Get Product by Barcode
 
@@ -322,8 +341,10 @@ Authorization: Bearer {{authToken}}
   "address": "123 Street, Yangon",
   "tier": "GOLD"
 }
+###
 
-@customerId = {{createCustomer.response.body.id}}
+# @customerId = {{createCustomer.response.body.id}}
+@customerId =cmqoz37gc000l01qqqvok5fbe
 
 ### Get Customer by ID
 
@@ -374,8 +395,9 @@ Authorization: Bearer {{authToken}}
   "paymentTerms": 30,
   "creditLimit": 5000
 }
-
-@supplierId = {{createSupplier.response.body.id}}
+###
+# @supplierId = {{createSupplier.response.body.id}}
+@supplierId = cmqoz44px000o01qqh45lt8d2
 
 ### Get All Suppliers
 
@@ -424,8 +446,8 @@ Authorization: Bearer {{authToken}}
   "tenantId": "{{tenantId}}",
   "supplierId": "{{supplierId}}",
   "status": "PENDING",
-  "orderDate": "2026-06-11T00:00:00Z",
-  "expectedDate": "2026-06-25T00:00:00Z",
+  # "orderDate": "2026-06-11T00:00:00Z",
+  # "expectedDate": "2026-06-25T00:00:00Z",
   "subTotal": 150.0,
   "taxAmount": 7.5,
   "grandTotal": 157.5,
@@ -440,6 +462,7 @@ Authorization: Bearer {{authToken}}
     }
   ]
 }
+###
 
 @poId = {{createPO.response.body.id}}
 
@@ -520,6 +543,7 @@ Authorization: Bearer {{authToken}}
     }
   ]
 }
+###
 
 @orderId = {{createOrder.response.body.id}}
 
