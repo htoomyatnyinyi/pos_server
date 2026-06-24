@@ -88,7 +88,7 @@ const app = new Elysia()
   .get("/", () => ({
     message: "POS API Running",
   }))
-  .group("/api", (app) =>
+  .group("/api", (app: any) =>
     app
       .use(authRoutes)
       .use(tenantRoutes)
