@@ -82,18 +82,19 @@ Authorization: {{platformToken}}
 
 
 ###
-@tenantId = {{createTenant.response.body.tenant.id}}
+# @tenantId = {{createTenant.response.body.tenant.id}}
+@tenantId = cmqt13c4f0003tqs6qxxw19hf
 
 ### Get Tenant by ID
 # @name getTenantById
-GET {{baseUrl}}/tenants/{{tenantId}}
+GET {{baseUrl}}/platform/tenants/{{tenantId}}
 # GET {{baseUrl}}/tenants/{{tenantId}}
 Authorization: Bearer {{platformToken}}
 
 ### Update Tenant
 
 # @name updateTenant
-PUT {{baseUrl}}/tenants/{{tenantId}}
+PUT {{baseUrl}}/platform/tenants/{{tenantId}}
 Content-Type: application/json
 Authorization: Bearer {{platformToken}}
 
@@ -134,7 +135,8 @@ Authorization: Bearer {{authToken}}
 
 ###
 # @storeId = {{createStore.response.body.stores.id}}
-@storeId = {{createStore.response.body.id}}
+# @storeId = {{createStore.response.body.id}}
+@storeId = cmqt17khp000401s6mu80p3cy
 
 ### Get All Stores
 
@@ -199,7 +201,8 @@ Authorization: Bearer {{authToken}}
 
 ###
 
-@categoryId = {{createCategory.response.body.id}}
+# @categoryId = {{createCategory.response.body.id}}
+@categoryId = cmqt190ne000501s6fr2ly1oh
 
 ### Get Category by ID
 
@@ -261,8 +264,9 @@ Authorization: Bearer {{authToken}}
   "userId": "{{userId}}",
   "variants": []
 }
-
-@productId = {{createProduct.response.body.id}}
+###
+# @productId = {{createProduct.response.body.id}}
+@productId = cmqt1anw8000701s6y6f50jyp
 
 ### Get Product by Barcode
 
@@ -322,8 +326,10 @@ Authorization: Bearer {{authToken}}
   "address": "123 Street, Yangon",
   "tier": "GOLD"
 }
+###
 
-@customerId = {{createCustomer.response.body.id}}
+# @customerId = {{createCustomer.response.body.id}}
+@customerId = cmqt1cmx8000c01s6708z4zpr
 
 ### Get Customer by ID
 
@@ -364,7 +370,7 @@ Authorization: Bearer {{authToken}}
 
 {
   "tenantId": "{{tenantId}}",
-  "code": "SUPP-001",
+  "code": "SUPP-0012",
   "name": "Coffee Beans Co., Ltd.",
   "contactName": "Mr. Roaster",
   "phone": "09987654321",
@@ -374,8 +380,9 @@ Authorization: Bearer {{authToken}}
   "paymentTerms": 30,
   "creditLimit": 5000
 }
-
-@supplierId = {{createSupplier.response.body.id}}
+###
+# @supplierId = {{createSupplier.response.body.id}}
+@supplierId = cmqt1dvgn000h01s6bnzffulu
 
 ### Get All Suppliers
 
@@ -423,7 +430,7 @@ Authorization: Bearer {{authToken}}
 {
   "tenantId": "{{tenantId}}",
   "supplierId": "{{supplierId}}",
-  "status": "PENDING",
+  "status": "DRAFT", 
   "orderDate": "2026-06-11T00:00:00Z",
   "expectedDate": "2026-06-25T00:00:00Z",
   "subTotal": 150.0,
@@ -440,9 +447,10 @@ Authorization: Bearer {{authToken}}
     }
   ]
 }
+###
 
-@poId = {{createPO.response.body.id}}
-
+# @poId = {{createPO.response.body.id}}
+@poId = cmqt1frum000m01s6degdu5v8
 ### Get All Purchase Orders
 
 # @name getPOs
@@ -520,8 +528,9 @@ Authorization: Bearer {{authToken}}
     }
   ]
 }
-
-@orderId = {{createOrder.response.body.id}}
+###
+# @orderId = {{createOrder.response.body.id}}
+@orderId = cmqt1hq4v000s01s6sdbfyet3
 
 ### Get All Orders
 
@@ -572,7 +581,7 @@ Authorization: Bearer {{authToken}}
   "status": "COMPLETED",
   "processedById": "{{userId}}"
 }
-
+###
 @paymentId = {{createPayment.response.body.id}}
 
 ### Get All Payments
@@ -634,6 +643,7 @@ Authorization: Bearer {{authToken}}
   ]
 }
 
+###
 @returnId = {{createReturn.response.body.id}}
 
 ### Get All Returns
@@ -710,8 +720,10 @@ Authorization: Bearer {{authToken}}
     }
   ]
 }
+###
 
-@inventoryCountId = {{createInventoryCount.response.body.id}}
+# @inventoryCountId = {{createInventoryCount.response.body.id}}
+@inventoryCountId = cmqt1me2v001001s62o9ifj74
 
 ### Get All Inventory Counts
 
@@ -749,8 +761,9 @@ Authorization: Bearer {{authToken}}
   "storeId": "{{storeId}}",
   "notes": "Morning shift"
 }
-
-@sessionId = {{openSession.response.body.id}}
+###
+# @sessionId = {{openSession.response.body.id}}
+@sessionId = cmqt1nme6001301s6cgt7e66s
 
 ### Close Cashier Session
 
@@ -797,9 +810,9 @@ Authorization: Bearer {{authToken}}
   "permissions": ["VIEW_REPORTS", "EDIT_PRICES"],
   "isActive": true
 }
-
-@staffId = {{createStaff.response.body.id}}
-
+###
+# @staffId = {{createStaff.response.body.id}}
+@staffId = cmqt1ow55001601s6te8qiv7o
 ### Get Staff by ID
 
 # @name getStaffById
@@ -859,7 +872,7 @@ Authorization: Bearer {{authToken}}
   "productIds": ["{{productId}}"],
   "categoryIds": ["{{categoryId}}"]
 }
-
+###
 @promotionId = {{createPromotion.response.body.id}}
 
 ### Get Promotion by ID
@@ -910,7 +923,7 @@ Authorization: Bearer {{authToken}}
     }
   ]
 }
-
+###
 @transferId = {{createStockTransfer.response.body.id}}
 
 ### Get All Stock Transfers
@@ -967,8 +980,9 @@ Authorization: Bearer {{authToken}}
   "appliesTo": ["products"],
   "validFrom": "2026-01-01T00:00:00Z"
 }
-
-@taxRateId = {{createTaxRate.response.body.id}}
+###
+# @taxRateId = {{createTaxRate.response.body.id}}
+@taxRateId = cmqt33bbd001d01s6wdxqmuby
 
 ### ============================================
 ### TENANT - EXPENSES
@@ -992,8 +1006,9 @@ Authorization: Bearer {{authToken}}
   "name": "Utilities",
   "description": "Electricity, water, internet"
 }
-
-@expenseCategoryId = {{createExpenseCategory.response.body.id}}
+###
+# @expenseCategoryId = {{createExpenseCategory.response.body.id}}
+@expenseCategoryId = cmqt33z9p001f01s62i6gb101
 
 ### Create Expense
 
@@ -1011,7 +1026,7 @@ Authorization: Bearer {{authToken}}
   "description": "Electricity bill",
   "expenseDate": "2026-06-11T00:00:00Z"
 }
-
+###
 @expenseId = {{createExpense.response.body.id}}
 
 ### ============================================
@@ -1037,8 +1052,9 @@ Authorization: Bearer {{authToken}}
   "customerId": "{{customerId}}",
   "expiresAt": "2027-12-31T00:00:00Z"
 }
-
-@giftCardId = {{createGiftCard.response.body.id}}
+###
+# @giftCardId = {{createGiftCard.response.body.id}}
+@giftCardId = cmqt34ygf001h01s63wyggktt
 
 ### Lookup Gift Card by Number
 
@@ -1113,6 +1129,8 @@ Authorization: Bearer {{authToken}}
   "message": "Product Espresso is running low. Only 10 units left."
 }
 
+###
+
 @notificationId = {{createNotification.response.body.id}}
 
 ### Mark Notification as Read
@@ -1145,6 +1163,7 @@ Authorization: Bearer {{authToken}}
   "permissions": ["read:products", "write:orders"],
   "expiresAt": "2027-12-31T00:00:00Z"
 }
+###
 
 @apiKeyId = {{createApiKey.response.body.id}}
 
@@ -1177,6 +1196,7 @@ Authorization: Bearer {{authToken}}
   "url": "https://webhook.site/order-events",
   "events": ["order.created", "order.updated"]
 }
+###
 
 @webhookId = {{createWebhook.response.body.id}}
 
