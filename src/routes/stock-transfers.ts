@@ -109,9 +109,26 @@ export const stockTransferRoutes = new Elysia({
         };
       }
 
+      // Add On by myself. VALIDATION: Verify both stores exist and belong to this tenant
+      const stores = await prisma.store.findMany({
+        where: {
+          id: { in: [body.fromStoreId, body.toStoreId] },
+          tenantId: tenantId, // Ensures tenant isolation
+        },
+      });
+
+      if (stores.length !== 2) {
+        set.status = 404;
+        return {
+          success: false,
+          message:
+            "One or both of the specified stores do not exist or do not belong to your organization.",
+        };
+      }
+
       const transferNumber = `TRF-${Date.now()}`;
 
-      const transfer = await prisma.$transaction(async (tx) => {
+      const transfer = await prisma.$transaction(async (tx: any) => {
         const created = await tx.stockTransfer.create({
           data: {
             tenantId,
@@ -198,7 +215,7 @@ export const stockTransferRoutes = new Elysia({
         };
       }
 
-      const transfer = await prisma.$transaction(async (tx) => {
+      const transfer = await prisma.$transaction(async (tx: any) => {
         const updated = await tx.stockTransfer.update({
           where: { id },
           data: {
@@ -296,7 +313,7 @@ export const stockTransferRoutes = new Elysia({
         };
       }
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: any) => {
         // တွဲဖက်ပစ္စည်းစာရင်းများကို အရင်ဖျက်သိမ်းခြင်း
         await tx.stockTransferItem.deleteMany({ where: { transferId: id } });
 

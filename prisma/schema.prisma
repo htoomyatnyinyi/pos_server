@@ -1585,17 +1585,20 @@ model Notification {
   message         String @db.Text
   
   isRead          Boolean @default(false)
+  readAt          DateTime?
   metadata        Json?
   
   tenant          Tenant @relation(fields: [tenantId], references: [id])
   user            User @relation(fields: [userId], references: [id])
   
   createdAt       DateTime @default(now())
+  deletedAt       DateTime?
   
   @@index([userId, isRead])
   @@index([createdAt])
   @@index([type])
   @@index([tenantId])
+  @@index([deletedAt])
 }
 
 // ============================================

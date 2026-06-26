@@ -44,14 +44,14 @@ export const apiKeyRoutes = new Elysia({
       const rawSecret = generateApiSecret();
       const hashedSecret = hashSecret(rawSecret);
 
-      const apiKey = await prisma.$transaction(async (tx) => {
+      const apiKey = await prisma.$transaction(async (tx: any) => {
         const created = await tx.apiKey.create({
           data: {
             tenantId,
             userId: body.userId,
             name: body.name.trim(),
             key: generateApiKey(),
-            secret: hashedSecret, // 💡 Secret ကို Hash လုပ်ပြီးမှ သိမ်းခြင်း
+            secret: hashedSecret,
             permissions: body.permissions ?? ["READ"],
             expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
           },
@@ -68,7 +68,7 @@ export const apiKeyRoutes = new Elysia({
           },
         });
 
-        return { ...created, secret: rawSecret }; // 💡 Secret ကို တစ်ကြိမ်သာ ပြသခြင်း
+        return { ...created, secret: rawSecret };
       });
 
       set.status = 201;
@@ -102,7 +102,7 @@ export const apiKeyRoutes = new Elysia({
         };
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.apiKey.update({
           where: { id },
           data: { isActive: false },

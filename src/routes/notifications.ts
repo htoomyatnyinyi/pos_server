@@ -1,7 +1,48 @@
 import { Elysia, t } from "elysia";
+import type { NotificationType } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import {
+  buildUserNotificationWhere,
+  createNotification,
+} from "../lib/notifications";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 import { notificationTypeSchema } from "../lib/schemas";
+
+const ADMIN_ROLES = new Set(["ADMIN", "MANAGER", "SUPER_ADMIN"]);
+
+const listQuerySchema = t.Optional(
+  t.Object({
+    page: t.Optional(t.String()),
+    limit: t.Optional(t.String()),
+    isRead: t.Optional(t.String()),
+    type: t.Optional(notificationTypeSchema),
+    since: t.Optional(t.String()),
+  }),
+);
+
+function parsePagination(query: {
+  page?: string;
+  limit?: string;
+}) {
+  const page = Math.max(1, parseInt(query.page ?? "1", 10) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(1, parseInt(query.limit ?? "50", 10) || 50),
+  );
+
+  return { page, limit, skip: (page - 1) * limit };
+}
+
+function parseSince(since?: string) {
+  if (!since) return undefined;
+
+  const parsed = new Date(since);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
 
 export const notificationRoutes = new Elysia({
   prefix: "/notifications",
@@ -9,86 +50,218 @@ export const notificationRoutes = new Elysia({
   .use(tenantAuthMiddleware)
 
   /**
-   * 1. GET ALL NOTIFICATIONS (Tenant & User Isolated)
+   * 1. GET ALL NOTIFICATIONS (Tenant & User Isolated, Paginated)
    */
-  .get("/", async ({ tenantId, userId, query }) => {
-    return prisma.notification.findMany({
-      where: {
-        tenantId,
-        userId, // 💡 User မိမိကိုယ်တိုင်၏ Notification ကိုသာ မြင်ရမည်
-        deletedAt: null,
+  .get(
+    "/",
+    async ({ tenantId, userId, query, set }) => {
+      const { page, limit, skip } = parsePagination(query);
+      const since = parseSince(query.since);
+
+      if (since === null) {
+        set.status = 400;
+        return {
+          success: false,
+          message: "Invalid 'since' query parameter. Use an ISO 8601 date.",
+        };
+      }
+
+      const whereCondition = {
+        ...buildUserNotificationWhere(tenantId, userId),
         ...(query.isRead !== undefined
           ? { isRead: query.isRead === "true" }
           : {}),
+        ...(query.type ? { type: query.type as NotificationType } : {}),
+        ...(since ? { createdAt: { gte: since } } : {}),
+      };
+
+      const [total, notifications] = await prisma.$transaction([
+        prisma.notification.count({ where: whereCondition }),
+        prisma.notification.findMany({
+          where: whereCondition,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        notifications,
+      };
+    },
+    { query: listQuerySchema },
+  )
+
+  /**
+   * 2. GET UNREAD COUNT (Lightweight polling target)
+   */
+  .get("/unread-count", async ({ tenantId, userId }) => {
+    const count = await prisma.notification.count({
+      where: {
+        ...buildUserNotificationWhere(tenantId, userId),
+        isRead: false,
       },
-      orderBy: { createdAt: "desc" },
-      take: parseInt(query.limit as string) || 50,
     });
+
+    return { success: true, count };
   })
 
   /**
-   * 2. MARK ALL AS READ (Batch Action)
+   * 3. MARK ALL AS READ (Batch Action)
    */
   .patch("/read-all", async ({ tenantId, userId }) => {
-    return prisma.notification.updateMany({
-      where: { tenantId, userId, isRead: false },
+    const result = await prisma.notification.updateMany({
+      where: {
+        ...buildUserNotificationWhere(tenantId, userId),
+        isRead: false,
+      },
       data: { isRead: true, readAt: new Date() },
     });
+
+    return {
+      success: true,
+      message: "All notifications marked as read.",
+      count: result.count,
+    };
   })
 
   /**
-   * 3. PATCH: READ SINGLE NOTIFICATION
+   * 4. GET SINGLE NOTIFICATION BY ID
    */
-  .patch("/:id/read", async ({ params: { id }, tenantId, userId, set }) => {
-    const updated = await prisma.notification.updateMany({
-      where: { id, tenantId, userId }, // 💡 လုံခြုံရေး: မိမိပိုင်မှသာ ပြင်နိုင်မည်
-      data: { isRead: true, readAt: new Date() },
-    });
+  .get(
+    "/:id",
+    async ({ params: { id }, tenantId, userId, set }) => {
+      const notification = await prisma.notification.findFirst({
+        where: {
+          id,
+          ...buildUserNotificationWhere(tenantId, userId),
+        },
+      });
 
-    if (updated.count === 0) {
-      set.status = 404;
-      return { success: false, message: "Notification not found" };
-    }
-    return { success: true };
-  })
+      if (!notification) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Notification not found or access denied.",
+        };
+      }
+
+      return { success: true, notification };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
 
   /**
-   * 4. POST: CREATE NOTIFICATION (For System/Internal Events)
+   * 5. PATCH: READ SINGLE NOTIFICATION
+   */
+  .patch(
+    "/:id/read",
+    async ({ params: { id }, tenantId, userId, set }) => {
+      const updated = await prisma.notification.updateMany({
+        where: {
+          id,
+          ...buildUserNotificationWhere(tenantId, userId),
+        },
+        data: { isRead: true, readAt: new Date() },
+      });
+
+      if (updated.count === 0) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Notification not found or access denied.",
+        };
+      }
+
+      return { success: true, message: "Notification marked as read." };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  /**
+   * 6. POST: CREATE NOTIFICATION (Admin/System Events)
    */
   .post(
     "/",
-    async ({ body, tenantId, set }) => {
-      const notification = await prisma.notification.create({
-        data: {
+    async ({ body, tenantId, role, set }) => {
+      if (!ADMIN_ROLES.has(role)) {
+        set.status = 403;
+        return {
+          success: false,
+          message: "Only admins and managers can create notifications.",
+        };
+      }
+
+      const targetUser = await prisma.user.findFirst({
+        where: {
+          id: body.userId,
           tenantId,
-          userId: body.userId,
-          type: body.type,
-          title: body.title,
-          message: body.message,
-          metadata: body.metadata || {},
+          deletedAt: null,
+          isActive: true,
         },
+        select: { id: true },
       });
+
+      if (!targetUser) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Target user not found in this tenant.",
+        };
+      }
+
+      const notification = await createNotification(prisma, {
+        tenantId,
+        userId: body.userId,
+        type: body.type,
+        title: body.title,
+        message: body.message,
+        metadata: body.metadata,
+      });
+
       set.status = 201;
-      return { success: true, notification };
+      return {
+        success: true,
+        message: "Notification created successfully.",
+        notification,
+      };
     },
     {
       body: t.Object({
-        userId: t.String(),
+        userId: t.String({ minLength: 1 }),
         type: notificationTypeSchema,
-        title: t.String(),
-        message: t.String(),
+        title: t.String({ minLength: 1, maxLength: 200 }),
+        message: t.String({ minLength: 1, maxLength: 2000 }),
         metadata: t.Optional(t.Any()),
       }),
     },
   )
 
   /**
-   * 5. DELETE: SOFT DELETE
+   * 7. DELETE: SOFT DELETE
    */
-  .delete("/:id", async ({ params: { id }, tenantId, userId }) => {
-    await prisma.notification.updateMany({
-      where: { id, tenantId, userId },
-      data: { deletedAt: new Date() },
-    });
-    return { success: true, message: "Notification archived" };
-  });
+  .delete(
+    "/:id",
+    async ({ params: { id }, tenantId, userId, set }) => {
+      const result = await prisma.notification.updateMany({
+        where: {
+          id,
+          ...buildUserNotificationWhere(tenantId, userId),
+        },
+        data: { deletedAt: new Date() },
+      });
+
+      if (result.count === 0) {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Notification not found or access denied.",
+        };
+      }
+
+      return { success: true, message: "Notification archived." };
+    },
+    { params: t.Object({ id: t.String() }) },
+  );

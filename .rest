@@ -1111,10 +1111,16 @@ Authorization: Bearer {{authToken}}
 ### Get Notifications
 
 # @name getNotifications
-GET {{baseUrl}}/tenant/notifications/
+GET {{baseUrl}}/tenant/notifications/?page=1&limit=20
 Authorization: Bearer {{authToken}}
 
-### Create Notification
+### Get Unread Notification Count
+
+# @name getUnreadNotificationCount
+GET {{baseUrl}}/tenant/notifications/unread-count
+Authorization: Bearer {{authToken}}
+
+### Create Notification (Admin/Manager only)
 
 # @name createNotification
 POST {{baseUrl}}/tenant/notifications/
@@ -1122,16 +1128,30 @@ Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
 {
-  "tenantId": "{{tenantId}}",
   "userId": "{{userId}}",
   "type": "LOW_STOCK",
   "title": "Low Stock Alert",
-  "message": "Product Espresso is running low. Only 10 units left."
+  "message": "Product Espresso is running low. Only 10 units left.",
+  "metadata": {
+    "productId": "{{productId}}"
+  }
 }
 
 ###
 
-@notificationId = {{createNotification.response.body.id}}
+@notificationId = {{createNotification.response.body.notification.id}}
+
+### Get Notification By ID
+
+# @name getNotificationById
+GET {{baseUrl}}/tenant/notifications/{{notificationId}}
+Authorization: Bearer {{authToken}}
+
+### Mark All Notifications as Read
+
+# @name markAllNotificationsRead
+PATCH {{baseUrl}}/tenant/notifications/read-all
+Authorization: Bearer {{authToken}}
 
 ### Mark Notification as Read
 
@@ -1154,7 +1174,8 @@ Authorization: Bearer {{authToken}}
 # @name createApiKey
 POST {{baseUrl}}/tenant/api-keys/
 Content-Type: application/json
-Authorization: Bearer {{authToken}}
+Authorization: Bearer {{platformToken}}
+# Authorization: Bearer {{authToken}}
 
 {
   "tenantId": "{{tenantId}}",
@@ -1198,10 +1219,10 @@ Authorization: Bearer {{authToken}}
 }
 ###
 
-@webhookId = {{createWebhook.response.body.id}}
+# @webhookId = {{createWebhook.response.body.id}}
+@webhookId = cmqt37ean001p01s6h0xp5re0
 
-### Update Webhook
-
+### Update Webhook 
 # @name updateWebhook
 PUT {{baseUrl}}/tenant/webhooks/{{webhookId}}
 Content-Type: application/json
@@ -1225,10 +1246,14 @@ Authorization: Bearer {{authToken}}
 
 # @name getAuditLogs
 GET {{baseUrl}}/platform/audit-logs/
-Authorization: Bearer {{platformToken}}
+# Authorization: Bearer {{platformToken}}
+Authorization: Bearer {{authToken}}
 
+###
+@auditLogId = cmqt37tcq001s01s60uzwiwqf
 ### Get Audit Log by ID
 
 # @name getAuditLogById
 GET {{baseUrl}}/platform/audit-logs/{{auditLogId}}
 Authorization: Bearer {{platformToken}}
+# Authorization: Bearer {{authToken}}
