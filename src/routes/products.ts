@@ -39,7 +39,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           { name: { contains: search, mode: "insensitive" } },
           { sku: { contains: search, mode: "insensitive" } },
           { barcode: { contains: search, mode: "insensitive" } },
-          { brand: { contains: search, mode: "insensitive" } },
+          { brand: { name: { contains: search, mode: "insensitive" } } },
         ];
       }
 
@@ -49,6 +49,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           where: whereCondition,
           include: {
             category: true,
+            brand: true,
             supplier: true,
             variants: true,
             inventories: storeId ? { where: { storeId } } : true,
@@ -91,7 +92,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     async ({ params: { barcode }, tenantId, set }) => {
       const product = await prisma.product.findFirst({
         where: { tenantId, barcode, deletedAt: null },
-        include: { category: true, supplier: true, variants: true },
+        include: { category: true, brand: true, supplier: true, variants: true },
       });
 
       if (!product) {
@@ -118,6 +119,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         where: { id, tenantId, deletedAt: null },
         include: {
           category: true,
+          brand: true,
           supplier: true,
           variants: true,
           inventories: { include: { store: true } },
@@ -198,7 +200,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             barcode: body.barcode?.trim(),
             name: body.name.trim(),
             description: body.description,
-            brand: body.brand,
+            brandId: body.brandId,
             costPrice: body.costPrice,
             sellingPrice: body.sellingPrice,
             wholesalePrice: body.wholesalePrice,
@@ -281,7 +283,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         barcode: t.Optional(t.String()),
         name: t.String(),
         description: t.Optional(t.String()),
-        brand: t.Optional(t.String()),
+        brandId: t.Optional(t.String()),
         costPrice: t.Number(),
         sellingPrice: t.Number(),
         wholesalePrice: t.Optional(t.Number()),
@@ -403,7 +405,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             barcode: body.barcode?.trim(),
             name: body.name?.trim(),
             description: body.description,
-            brand: body.brand,
+            brandId: body.brandId,
             costPrice: body.costPrice,
             sellingPrice: body.sellingPrice,
             wholesalePrice: body.wholesalePrice,
@@ -442,7 +444,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           barcode: t.Optional(t.String()),
           name: t.String(),
           description: t.Optional(t.String()),
-          brand: t.Optional(t.String()),
+          brandId: t.Optional(t.String()),
           costPrice: t.Number(),
           sellingPrice: t.Number(),
           wholesalePrice: t.Optional(t.Number()),

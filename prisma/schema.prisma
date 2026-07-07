@@ -644,9 +644,8 @@ model Product {
   
   name              String
   description       String? @db.Text
-  brand             String?
-  // brandId           String?
-  // brand             Brand? @relation(fields: [brandId], references: [id])
+  brandId           String?
+  brand             Brand? @relation(fields: [brandId], references: [id])
   
   sku               String?
   barcode           String?
@@ -702,24 +701,29 @@ model Product {
   @@index([barcode])
   @@index([tenantId, createdAt])
   @@index([name])
-  @@index([brand])
+  @@index([brandId])
 }
 
-// model Brand {
-//   id          String @id @default(cuid())
-//   name        String
-//   description String?
+model Brand {
+  id          String @id @default(cuid())
+  name        String
+  description String?
   
-//   tenantId    String
-//   tenant      Tenant @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
   
-//   products    Product[]
+  products    Product[]
   
-//   isActive    Boolean @default(true)
+  isActive    Boolean @default(true)
+  deletedAt   DateTime?
   
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@index([deletedAt])
+}
 
 
 model ProductVariant {

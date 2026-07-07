@@ -14,6 +14,7 @@ import { productRoutes } from "./routes/products";
 import { orderRoutes } from "./routes/orders";
 import { storeRoutes } from "./routes/stores";
 import { categoryRoutes } from "./routes/categories";
+import { brandRoutes } from "./routes/brands";
 import { supplierRoutes } from "./routes/suppliers";
 import { customerRoutes } from "./routes/customers";
 import { sessionRoutes } from "./routes/sessions";
@@ -91,6 +92,7 @@ const app = new Elysia()
           .use(orderRoutes)
           .use(storeRoutes)
           .use(categoryRoutes)
+          .use(brandRoutes)
           .use(supplierRoutes)
           .use(customerRoutes)
           .use(sessionRoutes)
