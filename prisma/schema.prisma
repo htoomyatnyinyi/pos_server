@@ -648,11 +648,11 @@ model Product {
   // brandId           String?
   // brand             Brand? @relation(fields: [brandId], references: [id])
   
-  sku               String
+  sku               String?
   barcode           String?
   
-  costPrice         Decimal @db.Decimal(12, 2)
-  sellingPrice      Decimal @db.Decimal(12, 2)
+  costPrice         Decimal? @db.Decimal(12, 2)
+  sellingPrice      Decimal? @db.Decimal(12, 2)
   wholesalePrice    Decimal? @db.Decimal(12, 2)
   
   promoPrice        Decimal? @db.Decimal(12, 2)
@@ -734,6 +734,7 @@ model ProductVariant {
   
   sku             String
   barcode         String?
+  
   
   price           Decimal @db.Decimal(12, 2)
   costPrice       Decimal @db.Decimal(12, 2)
