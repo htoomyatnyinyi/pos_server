@@ -49,7 +49,7 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
       }
 
       // Database Transaction
-      const newStore = await prisma.$transaction(async (tx) => {
+      const newStore = await prisma.$transaction(async (tx: any) => {
         const store = await tx.store.create({
           data: {
             tenantId,
@@ -196,7 +196,7 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
         return { success: false, message: "Store not found." };
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.store.update({
           where: { id },
           data: { deletedAt: new Date(), isActive: false },
@@ -211,6 +211,177 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
       return { success: true, message: "Store deleted successfully." };
     },
     { params: t.Object({ id: t.String() }) },
-  );
+  )
 
-//
+  /**
+   * 6. READ STORE PRODUCTS - ဆိုင်ခွဲရှိ Product များကို ကြည့်ရှုခြင်း (Pagination & Search)
+   */
+  .get(
+    "/:id/products",
+    async ({ params: { id }, query, tenantId, set }) => {
+      const store = await prisma.store.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+
+      if (!store) {
+        set.status = 404;
+        return { success: false, message: "Store not found." };
+      }
+
+      const page = query.page ? parseInt(query.page as string) : 1;
+      const limit = query.limit ? parseInt(query.limit as string) : 20;
+      const skip = (page - 1) * limit;
+      const search = query.search as string;
+      const categoryId = query.categoryId as string;
+
+      const whereCondition: any = {
+        tenantId,
+        deletedAt: null,
+        inventories: {
+          some: { storeId: id },
+        },
+      };
+
+      if (categoryId) {
+        whereCondition.categoryId = categoryId;
+      }
+
+      if (search) {
+        whereCondition.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { sku: { contains: search, mode: "insensitive" } },
+          { barcode: { contains: search, mode: "insensitive" } },
+          { brand: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [total, products] = await prisma.$transaction([
+        prisma.product.count({ where: whereCondition }),
+        prisma.product.findMany({
+          where: whereCondition,
+          include: {
+            category: true,
+            supplier: true,
+            variants: { include: { inventories: { where: { storeId: id } } } },
+            inventories: { where: { storeId: id } },
+          },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+        products,
+      };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      query: t.Optional(
+        t.Object({
+          page: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          search: t.Optional(t.String()),
+          categoryId: t.Optional(t.String()),
+        }),
+      ),
+    },
+  )
+
+  /**
+   * 7. READ SINGLE STORE PRODUCT - ဆိုင်ခွဲရှိ Product တစ်ခုချင်းစီကို ကြည့်ရှုခြင်း
+   */
+  .get(
+    "/:id/products/:productId",
+    async ({ params: { id, productId }, tenantId, set }) => {
+      const product = await prisma.product.findFirst({
+        where: { id: productId, tenantId, deletedAt: null },
+        include: {
+          category: true,
+          supplier: true,
+          variants: { include: { inventories: { where: { storeId: id } } } },
+          inventories: { where: { storeId: id } },
+        },
+      });
+
+      if (!product) {
+        set.status = 404;
+        return { success: false, message: "Product not found." };
+      }
+
+      return { success: true, product };
+    },
+    { params: t.Object({ id: t.String(), productId: t.String() }) },
+  )
+
+  /**
+   * 9. READ STORE CATEGORIES - ဆိုင်ခွဲအတွက် Category များကို ကြည့်ရှုခြင်း (Global to tenant)
+   */
+  .get(
+    "/:id/categories",
+    async ({ tenantId }) => {
+      const categories = await prisma.category.findMany({
+        where: { tenantId, deletedAt: null, isActive: true },
+        orderBy: { sortOrder: "asc" },
+        include: { _count: { select: { products: true } } },
+      });
+      return { success: true, categories };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  /**
+   * 10. READ STORE CUSTOMERS - ဆိုင်ခွဲအတွက် Customer များကို ကြည့်ရှုခြင်း (Global to tenant)
+   */
+  .get(
+    "/:id/customers",
+    async ({ tenantId, query }) => {
+      const page = query.page ? parseInt(query.page as string) : 1;
+      const limit = query.limit ? parseInt(query.limit as string) : 50;
+      const skip = (page - 1) * limit;
+      const search = query.search as string;
+
+      const whereCondition: any = { tenantId, deletedAt: null, isActive: true };
+
+      if (search) {
+        whereCondition.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+          { code: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [total, customers] = await prisma.$transaction([
+        prisma.customer.count({ where: whereCondition }),
+        prisma.customer.findMany({
+          where: whereCondition,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        customers,
+      };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      query: t.Optional(
+        t.Object({
+          page: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          search: t.Optional(t.String()),
+        }),
+      ),
+    },
+  );

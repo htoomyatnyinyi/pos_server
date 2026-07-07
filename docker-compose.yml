@@ -1,7 +1,7 @@
 services:
-  db:
+  database:
     image: postgres:16-alpine
-    container_name: pos_database
+    container_name: akhayar-pos-database
     restart: unless-stopped
 
     env_file:
@@ -28,19 +28,19 @@ services:
       retries: 5
       start_period: 10s
 
-  app:
+  server:
     build:
       context: .
       dockerfile: Dockerfile
 
-    container_name: pos_server
+    container_name: akhayar-pos-server
     restart: unless-stopped
 
     env_file:
       - .env
 
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: ${NODE_ENV:-development}
 
@@ -48,7 +48,7 @@ services:
       - "6060:6060"
 
     depends_on:
-      db:
+      database:
         condition: service_healthy
 
     networks:
@@ -71,7 +71,7 @@ services:
       context: .
       dockerfile: Dockerfile
 
-    container_name: pos_prisma_studio
+    container_name: akhayar-pos-prisma-studio
 
     command: >
       sh -c "npx prisma studio
@@ -82,13 +82,13 @@ services:
       - .env
 
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
 
     ports:
       - "5555:5555"
 
     depends_on:
-      db:
+      database:
         condition: service_healthy
 
     networks:
@@ -100,7 +100,7 @@ services:
 
   # tunnel:
   #   image: cloudflare/cloudflared:latest
-  #   container_name: pos_tunnel
+  #   container_name: akhayar-pos-tunnel
 
   #   command: tunnel --no-autoupdate run
 

@@ -13,7 +13,7 @@ Content-Type: application/json
 
 {
   "name": "HTOO MYAT",
-  "email": "htomyat@gmail.com",
+  "email": "htoomyat@gmail.com",
   "password": "password123",
   "tenantName": "My Business",
   "tenantCode": "MYBIZ"
@@ -26,7 +26,7 @@ POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "email": "htomyat@gmail.com",
+  "email": "htoomyat@gmail.com",
   "password": "password123",
   "tenantCode": "MYBIZ"
 }
@@ -83,7 +83,7 @@ Authorization: {{platformToken}}
 
 ###
 # @tenantId = {{createTenant.response.body.tenant.id}}
-@tenantId = cmqt13c4f0003tqs6qxxw19hf
+@tenantId = cmraeflii000001nx9vfvt5bu
 
 ### Get Tenant by ID
 # @name getTenantById
@@ -136,7 +136,7 @@ Authorization: Bearer {{authToken}}
 ###
 # @storeId = {{createStore.response.body.stores.id}}
 # @storeId = {{createStore.response.body.id}}
-@storeId = cmqt17khp000401s6mu80p3cy
+@storeId = cmraefljf000101nxpo2cgove
 
 ### Get All Stores
 
@@ -187,7 +187,7 @@ Authorization: Bearer {{authToken}}
 
 # @name createCategory
 ###
-POST {{baseUrl}}/tenant/categories/
+POST {{baseUrl}}/tenant/categories
 Content-Type: application/json
 Authorization: Bearer {{authToken}}
 
@@ -202,7 +202,7 @@ Authorization: Bearer {{authToken}}
 ###
 
 # @categoryId = {{createCategory.response.body.id}}
-@categoryId = cmqt190ne000501s6fr2ly1oh
+@categoryId = cmraggrib000101qibv6ut5p3
 
 ### Get Category by ID
 
@@ -241,6 +241,10 @@ Authorization: Bearer {{authToken}}
 GET {{baseUrl}}/tenant/products/
 Authorization: Bearer {{authToken}}
 
+###
+GET {{baseUrl}}/tenant/stores/{{storeId}}/products
+Authorization: Bearer {{authToken}}
+
 ### Create a Product (requires tenantId)
 
 # @name createProduct
@@ -250,9 +254,9 @@ Authorization: Bearer {{authToken}}
 
 {
   "tenantId": "{{tenantId}}",
-  "sku": "COF-001",
-  "barcode": "123456789",
-  "name": "Espresso",
+  "sku": "COF-00223",
+  "barcode": "01001010210",
+  "name": "Coffffee2",
   "description": "Strong black coffee",
   "brand": "Premium Roast",
   "costPrice": 1.5,
@@ -262,11 +266,26 @@ Authorization: Bearer {{authToken}}
   "storeId": "{{storeId}}",
   "initialStock": 100,
   "userId": "{{userId}}",
-  "variants": []
+  
+  "variants": [
+    {
+      "name": "Coffee - L3arge2",
+      "sku": "COF-00223-LRG",
+      "barcode": "39323",
+      "price": 4.5,
+      "costPrice": 2.0,
+      "size": "Large",
+      "color": "N/A",
+      "isActive": true
+    }
+  ]
 }
+
+
+
 ###
 # @productId = {{createProduct.response.body.id}}
-@productId = cmqt1anw8000701s6y6f50jyp
+@productId = cmragh39g000201qip0pen4lw
 
 ### Get Product by Barcode
 

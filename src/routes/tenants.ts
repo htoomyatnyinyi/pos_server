@@ -118,7 +118,7 @@ export const tenantRoutes = new Elysia({
         };
       }
 
-      const tenant = await prisma.$transaction(async (tx) => {
+      const tenant = await prisma.$transaction(async (tx: any) => {
         const created = await tx.tenant.create({
           data: {
             code: generatedCode,
@@ -165,6 +165,112 @@ export const tenantRoutes = new Elysia({
   )
 
   /**
+   * 4. POST: ASSIGN SUBSCRIPTION PLAN TO TENANT
+   * ကုမ္ပဏီတစ်ခုအား စာရင်းသွင်းထားသော Package ကို ရွေးချယ်ပေးခြင်း (Admin only)
+   */
+  .post(
+    "/:id/subscription",
+    async ({ params: { id }, body, role, userId, set }: any) => {
+      // 🔒 Only SUPER_ADMIN can assign plans
+      if (role !== "SUPER_ADMIN") {
+        set.status = 403;
+        return {
+          success: false,
+          message: "Only Super Admin can assign subscription plans.",
+        };
+      }
+
+      const { planId, billingCycle } = body;
+
+      // Check tenant exists
+      const tenant = await prisma.tenant.findFirst({
+        where: { id, deletedAt: null },
+      });
+
+      if (!tenant) {
+        set.status = 404;
+        return { success: false, message: "Tenant not found." };
+      }
+
+      // Check plan exists
+      const plan = await prisma.plan.findFirst({
+        where: { id: planId, deletedAt: null, isActive: true },
+      });
+
+      if (!plan) {
+        set.status = 404;
+        return { success: false, message: "Plan not found or inactive." };
+      }
+
+      const subscription = await prisma.$transaction(async (tx: any) => {
+        // 👉 deactivate old subscription (important for future upgrades)
+        await tx.subscription.updateMany({
+          where: {
+            tenantId: id,
+            status: "ACTIVE",
+          },
+          data: {
+            status: "INACTIVE",
+            endDate: new Date(),
+          },
+        });
+
+        // 👉 create new subscription
+        const created = await tx.subscription.create({
+          data: {
+            tenantId: id,
+            planId,
+            startDate: new Date(),
+            status: "ACTIVE",
+            billingCycle: billingCycle || "MONTHLY",
+            autoRenew: true,
+
+            // 👉 snapshot limits from plan (IMPORTANT)
+            currentStores: 0,
+            currentUsers: 0,
+            currentProducts: 0,
+            currentCustomers: 0,
+          },
+          include: {
+            plan: true,
+          },
+        });
+
+        // 👉 audit log
+        if (userId) {
+          await tx.auditLog.create({
+            data: {
+              tenantId: id,
+              userId,
+              action: "ASSIGN_PLAN",
+              entity: "Subscription",
+              entityId: created.id,
+              newData: JSON.parse(JSON.stringify(created)),
+            },
+          });
+        }
+
+        return created;
+      });
+
+      set.status = 201;
+
+      return {
+        success: true,
+        message: "Subscription plan assigned successfully.",
+        subscription,
+      };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({
+        planId: t.String(),
+        billingCycle: t.Optional(t.String()), // MONTHLY | YEARLY
+      }),
+    },
+  )
+
+  /**
    * 4. PUT: UPDATE TENANT SETTINGS (OWN TENANT OR SUPER ADMIN)
    * မိမိလုပ်ငန်း Profile အချက်အလက်များအား ပြင်ဆင်ခြင်း
    */
@@ -189,7 +295,7 @@ export const tenantRoutes = new Elysia({
         return { success: false, message: "Tenant account not found." };
       }
 
-      const updatedTenant = await prisma.$transaction(async (tx) => {
+      const updatedTenant = await prisma.$transaction(async (tx: any) => {
         const updated = await tx.tenant.update({
           where: { id },
           data: {
@@ -268,7 +374,7 @@ export const tenantRoutes = new Elysia({
         };
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         const deleted = await tx.tenant.update({
           where: { id },
           data: {

@@ -129,7 +129,7 @@ export const supplierRoutes = new Elysia({
         };
       }
 
-      const supplier = await prisma.$transaction(async (tx) => {
+      const supplier = await prisma.$transaction(async (tx: any) => {
         const created = await tx.supplier.create({
           data: {
             tenantId,
@@ -201,7 +201,7 @@ export const supplierRoutes = new Elysia({
         };
       }
 
-      const updatedSupplier = await prisma.$transaction(async (tx) => {
+      const updatedSupplier = await prisma.$transaction(async (tx: any) => {
         const updated = await tx.supplier.update({
           where: { id },
           data: {
@@ -277,7 +277,7 @@ export const supplierRoutes = new Elysia({
         };
       }
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         const deleted = await tx.supplier.update({
           where: { id },
           data: {
