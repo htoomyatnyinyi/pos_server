@@ -73,6 +73,7 @@ model Tenant {
   sessions Session[]
   notifications Notification[]
   storeSettings StoreSetting[]
+  brands Brand[]
 }
 
 // 
