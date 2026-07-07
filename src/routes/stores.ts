@@ -336,6 +336,70 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
     },
     { params: t.Object({ id: t.String() }) },
   )
+  .get(
+    "/:id/orders",
+    async ({ tenantId, params: { id }, query, set }) => {
+      const store = await prisma.store.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+
+      if (!store) {
+        set.status = 404;
+        return { success: false, message: "Store not found." };
+      }
+
+      const page = query.page ? parseInt(query.page as string) : 1;
+      const limit = query.limit ? parseInt(query.limit as string) : 20;
+      const skip = (page - 1) * limit;
+      const search = query.search as string;
+
+      const whereCondition: any = {
+        tenantId,
+        storeId: id,
+        deletedAt: null,
+      };
+
+      if (search) {
+        whereCondition.OR = [
+          { code: { contains: search, mode: "insensitive" } },
+          { customerName: { contains: search, mode: "insensitive" } },
+          { customerPhone: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [total, orders] = await prisma.$transaction([
+        prisma.order.count({ where: whereCondition }),
+        prisma.order.findMany({
+          where: whereCondition,
+          include: { customer: true },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+        orders,
+      };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      query: t.Optional(
+        t.Object({
+          page: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          search: t.Optional(t.String()),
+        }),
+      ),
+    },
+  )
 
   /**
    * 10. READ STORE CUSTOMERS - ဆိုင်ခွဲအတွက် Customer များကို ကြည့်ရှုခြင်း (Global to tenant)

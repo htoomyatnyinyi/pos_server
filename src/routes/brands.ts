@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
-import { prisma } from "../lib/prisma";
+// import { prisma } from "../lib/prisma";
+import prisma from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 
 export const brandRoutes = new Elysia({ prefix: "/brands" })

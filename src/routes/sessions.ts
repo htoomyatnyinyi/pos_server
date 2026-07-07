@@ -98,13 +98,16 @@ export const sessionRoutes = new Elysia({
     "/open",
     async ({ body, tenantId, userId, set }) => {
       // ၁။ 🚨 ဖွင့်လက်စ ကောင်တာစာရင်း ရှိမရှိ အရင်စစ်ဆေးခြင်း (Double Open Guard)
+      console.log("body", body, tenantId, userId);
       const existingActiveSession = await prisma.session.findFirst({
         where: {
           tenantId,
           userId,
+          storeId: body.storeId,
           status: "OPEN",
         },
       });
+      console.log("existingActiveSession", existingActiveSession);
 
       if (existingActiveSession) {
         set.status = 400;

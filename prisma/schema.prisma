@@ -1,7 +1,4 @@
 
-// ENTERPRISE POS SYSTEM SCHEMA - POSTGRESQL OPTIMIZED
-// 100% PRODUCTION READY - FINAL VERSION
-
 
 generator client {
   provider = "prisma-client-js"
@@ -1078,6 +1075,7 @@ model Order {
   voidReason       String?
   
   version          Int @default(0)
+  deletedAt        DateTime? // Add this line
   
   tenant           Tenant @relation(fields: [tenantId], references: [id])
   customer         Customer? @relation(fields: [customerId], references: [id])

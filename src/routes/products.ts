@@ -92,7 +92,12 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     async ({ params: { barcode }, tenantId, set }) => {
       const product = await prisma.product.findFirst({
         where: { tenantId, barcode, deletedAt: null },
-        include: { category: true, brand: true, supplier: true, variants: true },
+        include: {
+          category: true,
+          brand: true,
+          supplier: true,
+          variants: true,
+        },
       });
 
       if (!product) {
@@ -196,7 +201,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         const product = await tx.product.create({
           data: {
             tenantId,
-            sku: body.sku.trim(),
+            sku: body.sku?.trim(),
             barcode: body.barcode?.trim(),
             name: body.name.trim(),
             description: body.description,
@@ -228,7 +233,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
                     name: v.name.trim(),
                     sku: v.sku
                       ? v.sku.trim()
-                      : `${body.sku.trim()}-${slugify(v.name)}`,
+                      : `${body.sku?.trim()}-${slugify(v.name)}`,
                     barcode: v.barcode?.trim() || body.barcode?.trim(),
                     price: v.price ?? body.sellingPrice,
                     costPrice: v.costPrice ?? body.costPrice,
@@ -249,7 +254,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             tenantId,
             productId: product.id,
             oldPrice: 0,
-            newPrice: body.sellingPrice,
+            newPrice: body.sellingPrice || body.variants?.[0]?.price!,
             changedById: userId,
             reason: "Initial product creation",
           },
@@ -279,13 +284,13 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     },
     {
       body: t.Object({
-        sku: t.String(),
+        sku: t.Optional(t.String()),
         barcode: t.Optional(t.String()),
         name: t.String(),
         description: t.Optional(t.String()),
         brandId: t.Optional(t.String()),
-        costPrice: t.Number(),
-        sellingPrice: t.Number(),
+        costPrice: t.Optional(t.Number()),
+        sellingPrice: t.Optional(t.Number()),
         wholesalePrice: t.Optional(t.Number()),
         categoryId: t.Optional(t.String()),
         categoryName: t.Optional(t.String()),
