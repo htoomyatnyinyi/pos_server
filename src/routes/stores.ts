@@ -261,6 +261,7 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
           where: whereCondition,
           include: {
             category: true,
+            brand: true,
             supplier: true,
             variants: { include: { inventories: { where: { storeId: id } } } },
             inventories: { where: { storeId: id } },
@@ -305,6 +306,7 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
         where: { id: productId, tenantId, deletedAt: null },
         include: {
           category: true,
+          brand: true,
           supplier: true,
           variants: { include: { inventories: { where: { storeId: id } } } },
           inventories: { where: { storeId: id } },
@@ -356,14 +358,19 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
       const whereCondition: any = {
         tenantId,
         storeId: id,
-        deletedAt: null,
       };
 
       if (search) {
         whereCondition.OR = [
-          { code: { contains: search, mode: "insensitive" } },
-          { customerName: { contains: search, mode: "insensitive" } },
-          { customerPhone: { contains: search, mode: "insensitive" } },
+          { orderNumber: { contains: search, mode: "insensitive" } },
+          {
+            customer: {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { phone: { contains: search, mode: "insensitive" } },
+              ],
+            },
+          },
         ];
       }
 
@@ -436,6 +443,72 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
         success: true,
         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
         customers,
+      };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      query: t.Optional(
+        t.Object({
+          page: t.Optional(t.String()),
+          limit: t.Optional(t.String()),
+          search: t.Optional(t.String()),
+        }),
+      ),
+    },
+  )
+
+  /**
+   * 11. READ STORE BRANDS - ဆိုင်ခွဲအတွက် Brand များကို ကြည့်ရှုခြင်း (Global to tenant)
+   */
+  .get(
+    "/:id/brands",
+    async ({ tenantId }) => {
+      const brands = await prisma.brand.findMany({
+        where: { tenantId, deletedAt: null, isActive: true },
+        orderBy: { name: "asc" },
+        include: { _count: { select: { products: true } } },
+      });
+      return { success: true, brands };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
+
+  /**
+   * 12. READ STORE SUPPLIERS - ဆိုင်ခွဲအတွက် Supplier များကို ကြည့်ရှုခြင်း (Global to tenant)
+   */
+  .get(
+    "/:id/suppliers",
+    async ({ tenantId, query }) => {
+      const page = query.page ? parseInt(query.page as string) : 1;
+      const limit = query.limit ? parseInt(query.limit as string) : 50;
+      const skip = (page - 1) * limit;
+      const search = query.search as string;
+
+      const whereCondition: any = { tenantId, deletedAt: null, isActive: true };
+
+      if (search) {
+        whereCondition.OR = [
+          { name: { contains: search, mode: "insensitive" } },
+          { code: { contains: search, mode: "insensitive" } },
+          { contactName: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [total, suppliers] = await prisma.$transaction([
+        prisma.supplier.count({ where: whereCondition }),
+        prisma.supplier.findMany({
+          where: whereCondition,
+          orderBy: { name: "asc" },
+          skip,
+          take: limit,
+        }),
+      ]);
+
+      return {
+        success: true,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        suppliers,
       };
     },
     {
