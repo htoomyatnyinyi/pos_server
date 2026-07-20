@@ -41,6 +41,7 @@ import { platformAuthRoutes } from "./routes/platform-auth";
 import { reportRoutes } from "./routes/reports";
 import { accountRoutes } from "./routes/accounts";
 import { journalEntryRoutes } from "./routes/journal-entries";
+import { dashboardRoutes } from "./routes/dashboard";
 
 const app = new Elysia()
   .use(swagger())
@@ -73,6 +74,9 @@ const app = new Elysia()
       // 1. Public routes – no auth required
       .use(authRoutes)
       .use(platformAuthRoutes)
+
+      // Dashboard routes (both tenant and platform)
+      .use(dashboardRoutes)
 
       // 2. Platform group – Super Admin only
       .group(
