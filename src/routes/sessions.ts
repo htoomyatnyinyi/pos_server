@@ -2,29 +2,22 @@ import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 import { Decimal } from "@prisma/client/runtime/client";
+import { validateStore, requireRoles } from "../lib/security";
 
-export const sessionRoutes = new Elysia({
-  prefix: "/sessions",
-})
-  // 🔐 Multi-Tenant Authentication Middleware ချိတ်ဆက်ခြင်း
+export const sessionRoutes = new Elysia({ prefix: "/sessions" })
   .use(tenantAuthMiddleware)
 
-  /**
-   * 1. GET ALL SESSIONS WITH TENANT ISOLATION
-   */
   .get(
     "/",
     async ({ tenantId, query }) => {
       const page = query.page ? parseInt(query.page as string) : 1;
       const limit = query.limit ? parseInt(query.limit as string) : 20;
       const skip = (page - 1) * limit;
-
       const whereCondition: any = {
         tenantId,
         ...(query.storeId ? { storeId: query.storeId as string } : {}),
         ...(query.status ? { status: query.status as string } : {}),
       };
-
       const [total, sessions] = await prisma.$transaction([
         prisma.session.count({ where: whereCondition }),
         prisma.session.findMany({
@@ -39,7 +32,6 @@ export const sessionRoutes = new Elysia({
           take: limit,
         }),
       ]);
-
       return {
         success: true,
         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
@@ -58,13 +50,35 @@ export const sessionRoutes = new Elysia({
     },
   )
 
-  /**
-   * 2. GET ACTIVE SESSION FOR CURRENT LOGGED IN USER
-   * PATH: /api/tenant/sessions/active/:userId
-   */
   .get(
     "/active/:userId",
-    async ({ params: { userId }, tenantId, query, set }) => {
+    async ({
+      params: { userId },
+      tenantId,
+      query,
+      set,
+      userId: currentUserId,
+      role,
+    }) => {
+      // Restrict: only self or admin/manager
+      if (
+        userId !== currentUserId &&
+        !["ADMIN", "MANAGER", "SUPER_ADMIN"].includes(role)
+      ) {
+        set.status = 403;
+        return {
+          success: false,
+          message: "Forbidden: You can only view your own session.",
+        };
+      }
+      // Ensure user belongs to tenant
+      const userExists = await prisma.user.findFirst({
+        where: { id: userId, tenantId },
+      });
+      if (!userExists) {
+        set.status = 404;
+        return { success: false, message: "User not found." };
+      }
       const session = await prisma.session.findFirst({
         where: {
           tenantId,
@@ -74,7 +88,6 @@ export const sessionRoutes = new Elysia({
         },
         include: { register: true, store: true },
       });
-
       if (!session) {
         set.status = 404;
         return {
@@ -82,7 +95,6 @@ export const sessionRoutes = new Elysia({
           message: "No active register session found for this user.",
         };
       }
-
       return { success: true, session };
     },
     {
@@ -91,24 +103,34 @@ export const sessionRoutes = new Elysia({
     },
   )
 
-  /**
-   * 3. POST: OPEN CASH REGISTER SESSION (ငွေသိမ်းကောင်တာ အဖွင့်စာရင်းသွင်းခြင်း)
-   */
   .post(
     "/open",
     async ({ body, tenantId, userId, set }) => {
-      // ၁။ 🚨 ဖွင့်လက်စ ကောင်တာစာရင်း ရှိမရှိ အရင်စစ်ဆေးခြင်း (Double Open Guard)
-      console.log("body", body, tenantId, userId);
+      let storeId = body.storeId;
+      if (!storeId) {
+        const userWithStores = await prisma.user.findUnique({
+          where: { id: userId },
+          include: { stores: { take: 1 } },
+        });
+        storeId = userWithStores?.stores?.[0]?.storeId;
+      }
+      if (!storeId) {
+        set.status = 400;
+        return {
+          success: false,
+          message: "storeId is required to open a register session.",
+        };
+      }
+      await validateStore(storeId, tenantId);
+
       const existingActiveSession = await prisma.session.findFirst({
         where: {
           tenantId,
           userId,
-          storeId: body.storeId,
+          storeId,
           status: "OPEN",
         },
       });
-      console.log("existingActiveSession", existingActiveSession);
-
       if (existingActiveSession) {
         set.status = 400;
         return {
@@ -119,30 +141,11 @@ export const sessionRoutes = new Elysia({
         };
       }
 
-      let storeId = body.storeId;
-
-      // ၂။ Store ID မပါလာပါက User ချိတ်ဆက်ထားသော ဆိုင်ခွဲကို Auto ရှာဖွေခြင်း
-      if (!storeId) {
-        const userWithStores = await prisma.user.findUnique({
-          where: { id: userId },
-          include: { stores: { take: 1 } },
-        });
-        storeId = userWithStores?.stores?.[0]?.storeId;
-      }
-
-      if (!storeId) {
-        set.status = 400;
-        return {
-          success: false,
-          message: "storeId is required to open a register session.",
-        };
-      }
-
-      return await prisma.$transaction(async (tx) => {
-        const session = await tx.session.create({
+      const session = await prisma.$transaction(async (tx: any) => {
+        const created = await tx.session.create({
           data: {
             tenantId,
-            userId, // Auth Middleware မှရရှိလာသော Cashier User ID
+            userId,
             openingBalance: body.openingBalance,
             storeId,
             registerId: body.registerId ?? null,
@@ -151,26 +154,25 @@ export const sessionRoutes = new Elysia({
             openedAt: new Date(),
           },
         });
-
-        // Audit Log မှတ်တမ်းတင်ခြင်း
         await tx.auditLog.create({
           data: {
             tenantId,
             userId,
             action: "CREATE",
             entity: "Session",
-            entityId: session.id,
-            newData: JSON.parse(JSON.stringify(session)),
+            entityId: created.id,
+            newData: JSON.parse(JSON.stringify(created)),
           },
         });
-
-        set.status = 201;
-        return {
-          success: true,
-          message: "Cash register session opened successfully.",
-          session,
-        };
+        return created;
       });
+
+      set.status = 201;
+      return {
+        success: true,
+        message: "Cash register session opened successfully.",
+        session,
+      };
     },
     {
       body: t.Object({
@@ -182,17 +184,12 @@ export const sessionRoutes = new Elysia({
     },
   )
 
-  /**
-   * 4. POST: CLOSE REGISTER SESSION (အရောင်းစာရင်းများ တွက်ချက်၍ နေ့စဉ်ကောင်တာပိတ်ခြင်း)
-   */
   .post(
     "/:id/close",
     async ({ params: { id }, body, tenantId, userId, set }) => {
-      // ၁။ ပိတ်မည့် Session ရှိမရှိ စစ်ဆေးခြင်း
       const currentSession = await prisma.session.findFirst({
         where: { id, tenantId, status: "OPEN" },
       });
-
       if (!currentSession) {
         set.status = 404;
         return {
@@ -201,31 +198,22 @@ export const sessionRoutes = new Elysia({
         };
       }
 
-      return await prisma.$transaction(async (tx) => {
-        // ၂။ 💡 ခေါ်ယူမထားပါက လက်ရှိ DB ထဲက အရောင်းတန်ဖိုးများကို Dynamic ယူသုံးခြင်း
-        const finalCashSales = body.cashSales ?? currentSession.cashSales;
-        const finalCardSales = body.cardSales ?? currentSession.cardSales;
-        const finalDigitalSales =
-          body.digitalSales ?? currentSession.digitalSales;
+      const finalCashSales = body.cashSales ?? currentSession.cashSales;
+      const finalCardSales = body.cardSales ?? currentSession.cardSales;
+      const finalDigitalSales =
+        body.digitalSales ?? currentSession.digitalSales;
 
-        // ၃။ Auto Expected Balance Calculator (မျှော်မှန်းထားသော ငွေသားပမာဏ တွက်ချက်မှု Logic)
-        // Formula: မျှော်မှန်းငွေ = အဖွင့်ငွေ + Cash အရောင်းတန်ဖိုး (အသုံးစရိတ်များရှိပါက နှုတ်ရန်)
-        // const computedExpected =
-        //   body.expectedBalance ??
-        //   currentSession.openingBalance + finalCashSales;
-        // 💡 ရှင်းလင်းချက် - currentSession.openingBalance က Decimal ဖြစ်နေပါက
-        // ရိုးရိုး + အစား .plus() ကို သုံးပြီး finalCashSales (number သို့မဟုတ် Decimal) ကို လှမ်းပေါင်းရပါမည်
-        const computedExpected =
-          body.expectedBalance ??
-          new Decimal(currentSession.openingBalance)
-            .plus(finalCashSales)
-            .toNumber();
+      const computedExpected =
+        body.expectedBalance ??
+        new Decimal(currentSession.openingBalance)
+          .plus(finalCashSales)
+          .toNumber();
 
-        // ကွာဟချက် ရှာဖွေခြင်း (Discrepancy = ကောင်တာထဲရှိငွေအမှန် - စနစ်ကတွက်ပေးသောငွေ)
-        const computedDiscrepancy =
-          body.discrepancy ?? body.closingBalance - computedExpected;
+      const computedDiscrepancy =
+        body.discrepancy ?? body.closingBalance - computedExpected;
 
-        const closedSession = await tx.session.update({
+      const closedSession = await prisma.$transaction(async (tx: any) => {
+        const updated = await tx.session.update({
           where: { id },
           data: {
             closedAt: new Date(),
@@ -239,8 +227,6 @@ export const sessionRoutes = new Elysia({
             status: "CLOSED",
           },
         });
-
-        // Create System Audit Log
         await tx.auditLog.create({
           data: {
             tenantId,
@@ -249,22 +235,23 @@ export const sessionRoutes = new Elysia({
             entity: "Session",
             entityId: id,
             oldData: JSON.parse(JSON.stringify(currentSession)),
-            newData: JSON.parse(JSON.stringify(closedSession)),
+            newData: JSON.parse(JSON.stringify(updated)),
           },
         });
-
-        return {
-          success: true,
-          message:
-            "Session closed successfully and financial discrepancy calculated.",
-          session: closedSession,
-        };
+        return updated;
       });
+
+      return {
+        success: true,
+        message:
+          "Session closed successfully and financial discrepancy calculated.",
+        session: closedSession,
+      };
     },
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({
-        closingBalance: t.Number(), // 👈 ညနေပိုင်း ကောင်တာပိတ်ချိန် လက်ထဲတွင် လက်တွေ့ရေတွက်လို့ရသော ငွေသားပမာဏ
+        closingBalance: t.Number(),
         expectedBalance: t.Optional(t.Number()),
         discrepancy: t.Optional(t.Number()),
         cashSales: t.Optional(t.Number()),
@@ -274,3 +261,280 @@ export const sessionRoutes = new Elysia({
       }),
     },
   );
+
+// import { Elysia, t } from "elysia";
+// import { prisma } from "../lib/prisma";
+// import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
+// import { Decimal } from "@prisma/client/runtime/client";
+
+// export const sessionRoutes = new Elysia({
+//   prefix: "/sessions",
+// })
+//   // 🔐 Multi-Tenant Authentication Middleware ချိတ်ဆက်ခြင်း
+//   .use(tenantAuthMiddleware)
+
+//   /**
+//    * 1. GET ALL SESSIONS WITH TENANT ISOLATION
+//    */
+//   .get(
+//     "/",
+//     async ({ tenantId, query }) => {
+//       const page = query.page ? parseInt(query.page as string) : 1;
+//       const limit = query.limit ? parseInt(query.limit as string) : 20;
+//       const skip = (page - 1) * limit;
+
+//       const whereCondition: any = {
+//         tenantId,
+//         ...(query.storeId ? { storeId: query.storeId as string } : {}),
+//         ...(query.status ? { status: query.status as string } : {}),
+//       };
+
+//       const [total, sessions] = await prisma.$transaction([
+//         prisma.session.count({ where: whereCondition }),
+//         prisma.session.findMany({
+//           where: whereCondition,
+//           include: {
+//             user: { select: { id: true, name: true, email: true } },
+//             register: true,
+//             store: true,
+//           },
+//           orderBy: { openedAt: "desc" },
+//           skip,
+//           take: limit,
+//         }),
+//       ]);
+
+//       return {
+//         success: true,
+//         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+//         sessions,
+//       };
+//     },
+//     {
+//       query: t.Optional(
+//         t.Object({
+//           page: t.Optional(t.String()),
+//           limit: t.Optional(t.String()),
+//           storeId: t.Optional(t.String()),
+//           status: t.Optional(t.String()),
+//         }),
+//       ),
+//     },
+//   )
+
+//   /**
+//    * 2. GET ACTIVE SESSION FOR CURRENT LOGGED IN USER
+//    * PATH: /api/tenant/sessions/active/:userId
+//    */
+//   .get(
+//     "/active/:userId",
+//     async ({ params: { userId }, tenantId, query, set }) => {
+//       const session = await prisma.session.findFirst({
+//         where: {
+//           tenantId,
+//           userId,
+//           status: "OPEN",
+//           ...(query.storeId ? { storeId: query.storeId as string } : {}),
+//         },
+//         include: { register: true, store: true },
+//       });
+
+//       if (!session) {
+//         set.status = 404;
+//         return {
+//           success: false,
+//           message: "No active register session found for this user.",
+//         };
+//       }
+
+//       return { success: true, session };
+//     },
+//     {
+//       params: t.Object({ userId: t.String() }),
+//       query: t.Optional(t.Object({ storeId: t.Optional(t.String()) })),
+//     },
+//   )
+
+//   /**
+//    * 3. POST: OPEN CASH REGISTER SESSION (ငွေသိမ်းကောင်တာ အဖွင့်စာရင်းသွင်းခြင်း)
+//    */
+//   .post(
+//     "/open",
+//     async ({ body, tenantId, userId, set }) => {
+//       // ၁။ 🚨 ဖွင့်လက်စ ကောင်တာစာရင်း ရှိမရှိ အရင်စစ်ဆေးခြင်း (Double Open Guard)
+//       console.log("body", body, tenantId, userId);
+//       const existingActiveSession = await prisma.session.findFirst({
+//         where: {
+//           tenantId,
+//           userId,
+//           storeId: body.storeId,
+//           status: "OPEN",
+//         },
+//       });
+//       console.log("existingActiveSession", existingActiveSession);
+
+//       if (existingActiveSession) {
+//         set.status = 400;
+//         return {
+//           success: false,
+//           message:
+//             "You already have an active session open. Please close it first.",
+//           sessionId: existingActiveSession.id,
+//         };
+//       }
+
+//       let storeId = body.storeId;
+
+//       // ၂။ Store ID မပါလာပါက User ချိတ်ဆက်ထားသော ဆိုင်ခွဲကို Auto ရှာဖွေခြင်း
+//       if (!storeId) {
+//         const userWithStores = await prisma.user.findUnique({
+//           where: { id: userId },
+//           include: { stores: { take: 1 } },
+//         });
+//         storeId = userWithStores?.stores?.[0]?.storeId;
+//       }
+
+//       if (!storeId) {
+//         set.status = 400;
+//         return {
+//           success: false,
+//           message: "storeId is required to open a register session.",
+//         };
+//       }
+
+//       return await prisma.$transaction(async (tx) => {
+//         const session = await tx.session.create({
+//           data: {
+//             tenantId,
+//             userId, // Auth Middleware မှရရှိလာသော Cashier User ID
+//             openingBalance: body.openingBalance,
+//             storeId,
+//             registerId: body.registerId ?? null,
+//             status: "OPEN",
+//             notes: body.notes,
+//             openedAt: new Date(),
+//           },
+//         });
+
+//         // Audit Log မှတ်တမ်းတင်ခြင်း
+//         await tx.auditLog.create({
+//           data: {
+//             tenantId,
+//             userId,
+//             action: "CREATE",
+//             entity: "Session",
+//             entityId: session.id,
+//             newData: JSON.parse(JSON.stringify(session)),
+//           },
+//         });
+
+//         set.status = 201;
+//         return {
+//           success: true,
+//           message: "Cash register session opened successfully.",
+//           session,
+//         };
+//       });
+//     },
+//     {
+//       body: t.Object({
+//         openingBalance: t.Number(),
+//         storeId: t.Optional(t.String()),
+//         registerId: t.Optional(t.String()),
+//         notes: t.Optional(t.String()),
+//       }),
+//     },
+//   )
+
+//   /**
+//    * 4. POST: CLOSE REGISTER SESSION (အရောင်းစာရင်းများ တွက်ချက်၍ နေ့စဉ်ကောင်တာပိတ်ခြင်း)
+//    */
+//   .post(
+//     "/:id/close",
+//     async ({ params: { id }, body, tenantId, userId, set }) => {
+//       // ၁။ ပိတ်မည့် Session ရှိမရှိ စစ်ဆေးခြင်း
+//       const currentSession = await prisma.session.findFirst({
+//         where: { id, tenantId, status: "OPEN" },
+//       });
+
+//       if (!currentSession) {
+//         set.status = 404;
+//         return {
+//           success: false,
+//           message: "Open session not found or already closed.",
+//         };
+//       }
+
+//       return await prisma.$transaction(async (tx) => {
+//         // ၂။ 💡 ခေါ်ယူမထားပါက လက်ရှိ DB ထဲက အရောင်းတန်ဖိုးများကို Dynamic ယူသုံးခြင်း
+//         const finalCashSales = body.cashSales ?? currentSession.cashSales;
+//         const finalCardSales = body.cardSales ?? currentSession.cardSales;
+//         const finalDigitalSales =
+//           body.digitalSales ?? currentSession.digitalSales;
+
+//         // ၃။ Auto Expected Balance Calculator (မျှော်မှန်းထားသော ငွေသားပမာဏ တွက်ချက်မှု Logic)
+//         // Formula: မျှော်မှန်းငွေ = အဖွင့်ငွေ + Cash အရောင်းတန်ဖိုး (အသုံးစရိတ်များရှိပါက နှုတ်ရန်)
+//         // const computedExpected =
+//         //   body.expectedBalance ??
+//         //   currentSession.openingBalance + finalCashSales;
+//         // 💡 ရှင်းလင်းချက် - currentSession.openingBalance က Decimal ဖြစ်နေပါက
+//         // ရိုးရိုး + အစား .plus() ကို သုံးပြီး finalCashSales (number သို့မဟုတ် Decimal) ကို လှမ်းပေါင်းရပါမည်
+//         const computedExpected =
+//           body.expectedBalance ??
+//           new Decimal(currentSession.openingBalance)
+//             .plus(finalCashSales)
+//             .toNumber();
+
+//         // ကွာဟချက် ရှာဖွေခြင်း (Discrepancy = ကောင်တာထဲရှိငွေအမှန် - စနစ်ကတွက်ပေးသောငွေ)
+//         const computedDiscrepancy =
+//           body.discrepancy ?? body.closingBalance - computedExpected;
+
+//         const closedSession = await tx.session.update({
+//           where: { id },
+//           data: {
+//             closedAt: new Date(),
+//             closingBalance: body.closingBalance,
+//             expectedBalance: computedExpected,
+//             discrepancy: computedDiscrepancy,
+//             cashSales: finalCashSales,
+//             cardSales: finalCardSales,
+//             digitalSales: finalDigitalSales,
+//             notes: body.notes,
+//             status: "CLOSED",
+//           },
+//         });
+
+//         // Create System Audit Log
+//         await tx.auditLog.create({
+//           data: {
+//             tenantId,
+//             userId,
+//             action: "UPDATE",
+//             entity: "Session",
+//             entityId: id,
+//             oldData: JSON.parse(JSON.stringify(currentSession)),
+//             newData: JSON.parse(JSON.stringify(closedSession)),
+//           },
+//         });
+
+//         return {
+//           success: true,
+//           message:
+//             "Session closed successfully and financial discrepancy calculated.",
+//           session: closedSession,
+//         };
+//       });
+//     },
+//     {
+//       params: t.Object({ id: t.String() }),
+//       body: t.Object({
+//         closingBalance: t.Number(), // 👈 ညနေပိုင်း ကောင်တာပိတ်ချိန် လက်ထဲတွင် လက်တွေ့ရေတွက်လို့ရသော ငွေသားပမာဏ
+//         expectedBalance: t.Optional(t.Number()),
+//         discrepancy: t.Optional(t.Number()),
+//         cashSales: t.Optional(t.Number()),
+//         cardSales: t.Optional(t.Number()),
+//         digitalSales: t.Optional(t.Number()),
+//         notes: t.Optional(t.String()),
+//       }),
+//     },
+//   );

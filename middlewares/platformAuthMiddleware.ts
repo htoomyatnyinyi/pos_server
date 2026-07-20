@@ -7,48 +7,32 @@ export const platformAuthMiddleware = new Elysia({
   .use(jwt({ name: "jwt", secret: process.env.JWT_SECRET! }))
   .derive({ as: "global" }, async ({ jwt, headers }) => {
     const authHeader = headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return {
-        isAuthError: true,
-        authMessage: "Unauthorized: No token provided or invalid format",
-      };
+    if (!authHeader?.startsWith("Bearer ")) {
+      return { authError: true, authMessage: "No token provided" };
     }
-
     const token = authHeader.split(" ")[1];
     const payload = await jwt.verify(token);
-
-    if (!payload) {
-      return {
-        isAuthError: true,
-        authMessage: "Unauthorized: Invalid or expired token",
-      };
+    if (!payload || !payload.sub) {
+      return { authError: true, authMessage: "Invalid or expired token" };
     }
-
     return {
-      isAuthError: false,
+      authError: false,
       role: payload.role as string,
       userId: payload.sub as string,
-      tenantId: undefined as string | undefined,
     };
   })
-  // error အစား စိတ်ချရသည့် 'set' ကို ဆွဲထုတ်သုံးစွဲပါသည်
-  .onBeforeHandle(({ isAuthError, authMessage, role, set }) => {
-    if (isAuthError) {
+  .onBeforeHandle(({ authError, authMessage, role, set }) => {
+    if (authError) {
       set.status = 401;
-      return {
-        success: false,
-        message: authMessage || "Unauthorized access",
-      };
+      return { success: false, message: authMessage };
     }
-
-    if (role !== "SUPER_ADMIN") {
+    const allowedRoles = ["SUPER_ADMIN", "SUPPORT_AGENT", "BILLING_ADMIN"];
+    if (!allowedRoles.includes(role)) {
       set.status = 403;
-      return {
-        success: false,
-        message: "Forbidden: Access restricted to Super Admins only",
-      };
+      return { success: false, message: "Forbidden: Insufficient privileges" };
     }
   });
+
 // import { Elysia } from "elysia";
 // import { jwt } from "@elysiajs/jwt";
 
@@ -56,30 +40,116 @@ export const platformAuthMiddleware = new Elysia({
 //   name: "platformAuthMiddleware",
 // })
 //   .use(jwt({ name: "jwt", secret: process.env.JWT_SECRET! }))
-//   .derive(async ({ jwt, headers, set }) => {
+//   .derive({ as: "global" }, async ({ jwt, headers }) => {
 //     const authHeader = headers.authorization;
-//     if (!authHeader) {
-//       set.status = 401;
-//       throw new Error("Unauthorized: No token provided");
+//     if (!authHeader?.startsWith("Bearer ")) {
+//       return { authError: true, authMessage: "No token provided" };
 //     }
-
 //     const token = authHeader.split(" ")[1];
 //     const payload = await jwt.verify(token);
-
-//     if (!payload) {
-//       set.status = 401;
-//       throw new Error("Unauthorized: Invalid token");
+//     if (!payload || !payload.sub) {
+//       return { authError: true, authMessage: "Invalid or expired token" };
 //     }
-
-//     // Role ကို စစ်ဆေးခြင်း
 //     return {
+//       authError: false,
 //       role: payload.role as string,
+//       userId: payload.sub as string,
 //     };
 //   })
-//   .onBeforeHandle(({ role, set }) => {
-//     // Super Admin မဟုတ်ရင် ဝင်ခွင့်မပေးပါ
-//     if (role !== "SUPER_ADMIN") {
+//   .onBeforeHandle(({ authError, authMessage, role, set }) => {
+//     if (authError) {
+//       set.status = 401;
+//       return { success: false, message: authMessage };
+//     }
+//     const allowedRoles = ["SUPER_ADMIN", "SUPPORT_AGENT"]; // adjust as needed
+//     if (!allowedRoles.includes(role)) {
 //       set.status = 403;
-//       throw new Error("Forbidden: Access restricted to Super Admins only");
+//       return { success: false, message: "Forbidden: Insufficient privileges" };
 //     }
 //   });
+
+// // import { Elysia } from "elysia";
+// // import { jwt } from "@elysiajs/jwt";
+
+// // export const platformAuthMiddleware = new Elysia({
+// //   name: "platformAuthMiddleware",
+// // })
+// //   .use(jwt({ name: "jwt", secret: process.env.JWT_SECRET! }))
+// //   .derive({ as: "global" }, async ({ jwt, headers }) => {
+// //     const authHeader = headers.authorization;
+// //     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+// //       return {
+// //         isAuthError: true,
+// //         authMessage: "Unauthorized: No token provided or invalid format",
+// //       };
+// //     }
+
+// //     const token = authHeader.split(" ")[1];
+// //     const payload = await jwt.verify(token);
+
+// //     if (!payload) {
+// //       return {
+// //         isAuthError: true,
+// //         authMessage: "Unauthorized: Invalid or expired token",
+// //       };
+// //     }
+
+// //     return {
+// //       isAuthError: false,
+// //       role: payload.role as string,
+// //       userId: payload.sub as string,
+// //       tenantId: undefined as string | undefined,
+// //     };
+// //   })
+// //   // error အစား စိတ်ချရသည့် 'set' ကို ဆွဲထုတ်သုံးစွဲပါသည်
+// //   .onBeforeHandle(({ isAuthError, authMessage, role, set }) => {
+// //     if (isAuthError) {
+// //       set.status = 401;
+// //       return {
+// //         success: false,
+// //         message: authMessage || "Unauthorized access",
+// //       };
+// //     }
+
+// //     if (role !== "SUPER_ADMIN") {
+// //       set.status = 403;
+// //       return {
+// //         success: false,
+// //         message: "Forbidden: Access restricted to Super Admins only",
+// //       };
+// //     }
+// //   });
+// // // import { Elysia } from "elysia";
+// // // import { jwt } from "@elysiajs/jwt";
+
+// // // export const platformAuthMiddleware = new Elysia({
+// // //   name: "platformAuthMiddleware",
+// // // })
+// // //   .use(jwt({ name: "jwt", secret: process.env.JWT_SECRET! }))
+// // //   .derive(async ({ jwt, headers, set }) => {
+// // //     const authHeader = headers.authorization;
+// // //     if (!authHeader) {
+// // //       set.status = 401;
+// // //       throw new Error("Unauthorized: No token provided");
+// // //     }
+
+// // //     const token = authHeader.split(" ")[1];
+// // //     const payload = await jwt.verify(token);
+
+// // //     if (!payload) {
+// // //       set.status = 401;
+// // //       throw new Error("Unauthorized: Invalid token");
+// // //     }
+
+// // //     // Role ကို စစ်ဆေးခြင်း
+// // //     return {
+// // //       role: payload.role as string,
+// // //     };
+// // //   })
+// // //   .onBeforeHandle(({ role, set }) => {
+// // //     // Super Admin မဟုတ်ရင် ဝင်ခွင့်မပေးပါ
+// // //     if (role !== "SUPER_ADMIN") {
+// // //       set.status = 403;
+// // //       throw new Error("Forbidden: Access restricted to Super Admins only");
+// // //     }
+// // //   });

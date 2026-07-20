@@ -9,7 +9,8 @@ import { tenantAuthMiddleware } from "../middlewares/tenantAuthMiddleware";
 
 // Route Imports
 import { authRoutes } from "./routes/auth";
-import { tenantRoutes } from "./routes/tenants";
+import { tenantRoutes } from "./routes/tenants"; // Platform only
+import { tenantProfileRoutes } from "./routes/tenant-profile"; // NEW
 import { productRoutes } from "./routes/products";
 import { orderRoutes } from "./routes/orders";
 import { storeRoutes } from "./routes/stores";
@@ -37,6 +38,9 @@ import { supplierPaymentRoutes } from "./routes/supplier-payments";
 import { apiKeyRoutes } from "./routes/api-keys";
 import { webhookRoutes } from "./routes/webhooks";
 import { platformAuthRoutes } from "./routes/platform-auth";
+import { reportRoutes } from "./routes/reports";
+import { accountRoutes } from "./routes/accounts";
+import { journalEntryRoutes } from "./routes/journal-entries";
 
 const app = new Elysia()
   .use(swagger())
@@ -64,30 +68,35 @@ const app = new Elysia()
     },
   }))
 
-  // စနစ်တစ်ခုလုံး၏ ပင်မ API Group
   .group("/api", (apiApp) =>
     apiApp
-      // ၁။ Public Routes (Login / Register များအတွက်) - Middleware မလိုပါ
-      .use(authRoutes) // POST: /api/auth/login, /api/auth/register
-      .use(platformAuthRoutes) // POST: /api/platform/auth/login (အသစ်)
+      // 1. Public routes – no auth required
+      .use(authRoutes)
+      .use(platformAuthRoutes)
 
-      // ၂။ Platform Group - Super Admin သီးသန့်လမ်းကြောင်းများ (Inline ပုံစံပြောင်းလဲထားသည်)
+      // 2. Platform group – Super Admin only
       .group(
         "/platform",
         (platformApp) =>
           platformApp
             .use(platformAuthMiddleware)
-            .use(apiKeyRoutes) // add on
-            .use(tenantRoutes)
-            .use(auditLogRoutes)
-            .use(storeSettingRoutes), // add on
+            .use(apiKeyRoutes) // platform‑level api keys
+            .use(tenantRoutes) // ONLY platform can manage all tenants
+            .use(auditLogRoutes) // platform‑wide audit logs
+            .use(storeSettingRoutes) // global store settings
+            // Add accounting routes here
+            .use(accountRoutes) // /platform/accounts
+            .use(journalEntryRoutes) // /platform/journal-entries
+            .use(reportRoutes), // /platform/reports
       )
 
-      // ၃။ Tenant Group - ဆိုင်ခွဲများအတွက် လမ်းကြောင်းများ (Inline ပုံစံပြောင်းလဲထားသည်)
+      // 3. Tenant group – authenticated tenant users
       .group("/tenant", (tenantApp) =>
         tenantApp
           .use(tenantAuthMiddleware)
-          .use(tenantRoutes)
+          // NEW: tenant profile endpoints (GET/PUT their own tenant)
+          .use(tenantProfileRoutes)
+          // All other tenant‑scoped resources
           .use(productRoutes)
           .use(orderRoutes)
           .use(storeRoutes)
@@ -111,7 +120,7 @@ const app = new Elysia()
           .use(giftCardRoutes)
           .use(walletRoutes)
           .use(supplierPaymentRoutes)
-          .use(apiKeyRoutes)
+          .use(apiKeyRoutes) // tenant‑level api keys
           .use(webhookRoutes),
       ),
   )

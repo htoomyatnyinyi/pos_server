@@ -1,52 +1,52 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
-import { paymentMethodSchema } from "../lib/schemas";
-import { PaymentStatus } from "@prisma/client";
+import { requireRoles } from "../lib/security";
 
-export const paymentRoutes = new Elysia({
-  prefix: "/payments",
-})
+export const paymentRoutes = new Elysia({ prefix: "/payments" })
   .use(tenantAuthMiddleware)
 
-  /**
-   * 1. GET ALL PAYMENTS (Tenant Isolated)
-   */
-  .get("/", async ({ tenantId, query }) => {
-    const page = parseInt(query.page as string) || 1;
-    const limit = parseInt(query.limit as string) || 20;
-
-    return prisma.payment.findMany({
+  .get("/", async ({ tenantId }) => {
+    const payments = await prisma.payment.findMany({
       where: { tenantId, deletedAt: null },
       include: { order: true, processedBy: { select: { name: true } } },
       orderBy: { processedAt: "desc" },
-      skip: (page - 1) * limit,
-      take: limit,
+      take: 100,
     });
+    return { success: true, payments };
   })
 
-  /**
-   * 2. GET SINGLE PAYMENT
-   */
-  .get("/:id", async ({ params: { id }, tenantId, set }) => {
-    const payment = await prisma.payment.findFirst({
-      where: { id, tenantId, deletedAt: null },
-      include: { order: true, processedBy: true },
-    });
-    if (!payment) {
-      set.status = 404;
-      return { success: false, message: "Payment not found" };
-    }
-    return payment;
-  })
+  .get(
+    "/:id",
+    async ({ params: { id }, tenantId, set }) => {
+      const payment = await prisma.payment.findFirst({
+        where: { id, tenantId, deletedAt: null },
+        include: { order: true, processedBy: { select: { name: true } } },
+      });
+      if (!payment) {
+        set.status = 404;
+        return { success: false, message: "Payment not found." };
+      }
+      return { success: true, payment };
+    },
+    { params: t.Object({ id: t.String() }) },
+  )
 
-  /**
-   * 3. POST: PROCESS PAYMENT
-   */
   .post(
     "/",
-    async ({ body, tenantId, userId, set }) => {
-      const payment = await prisma.$transaction(async (tx) => {
+    async ({ body, tenantId, userId, role, set }) => {
+      requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
+
+      // Validate order
+      const order = await prisma.order.findFirst({
+        where: { id: body.orderId, tenantId },
+      });
+      if (!order) {
+        set.status = 404;
+        return { success: false, message: "Order not found." };
+      }
+
+      const payment = await prisma.$transaction(async (tx: any) => {
         const created = await tx.payment.create({
           data: {
             tenantId,
@@ -54,15 +54,11 @@ export const paymentRoutes = new Elysia({
             amount: body.amount,
             method: body.method,
             referenceNumber: body.referenceNumber,
-            // status: body.status || "PAID",
-            // status: PaymentStatus.PAID,
-            status: body.status
-              ? (body.status as PaymentStatus)
-              : PaymentStatus.PAID,
-            processedById: userId, // Token မှရသော User ID ကိုသုံးခြင်း
+            status: body.status || "PAID",
+            processedById: userId,
+            processedAt: new Date(),
           },
         });
-
         await tx.auditLog.create({
           data: {
             tenantId,
@@ -77,89 +73,275 @@ export const paymentRoutes = new Elysia({
       });
 
       set.status = 201;
-      return { success: true, payment };
+      return {
+        success: true,
+        message: "Payment recorded successfully.",
+        payment,
+      };
     },
     {
       body: t.Object({
         orderId: t.String(),
         amount: t.Number(),
-        method: paymentMethodSchema,
+        method: t.String(),
         referenceNumber: t.Optional(t.String()),
         status: t.Optional(t.String()),
       }),
     },
   )
 
-  /**
-   * 4. PUT: UPDATE PAYMENT (e.g. Voiding or updating reference)
-   */
   .put(
     "/:id",
-    async ({ params: { id }, body, tenantId, userId }) => {
+    async ({ params: { id }, body, tenantId, userId, role, set }) => {
+      requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+
       const current = await prisma.payment.findFirst({
-        where: { id, tenantId },
+        where: { id, tenantId, deletedAt: null },
       });
-      if (!current) throw new Error("Payment not found");
+      if (!current) {
+        set.status = 404;
+        return { success: false, message: "Payment not found." };
+      }
 
-      return prisma.$transaction(async (tx) => {
-        const updated = await tx.payment.update({
-          where: { id },
-          data: {
-            amount: body.amount ?? undefined,
-            method: body.method ?? undefined,
-            referenceNumber: body.referenceNumber ?? undefined,
-            // status: body.status ?? undefined,
-            // status: PaymentStatus.PENDING,
-            status: body.status ? (body.status as PaymentStatus) : undefined,
-          },
-        });
-
-        await tx.auditLog.create({
-          data: {
-            tenantId,
-            userId,
-            action: "UPDATE",
-            entity: "Payment",
-            entityId: id,
-            oldData: JSON.parse(JSON.stringify(current)),
-            newData: JSON.parse(JSON.stringify(updated)),
-          },
-        });
-        return updated;
+      const updated = await prisma.payment.update({
+        where: { id },
+        data: {
+          amount: body.amount,
+          method: body.method,
+          referenceNumber: body.referenceNumber,
+          status: body.status,
+        },
       });
+
+      await prisma.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: "UPDATE",
+          entity: "Payment",
+          entityId: id,
+          oldData: JSON.parse(JSON.stringify(current)),
+          newData: JSON.parse(JSON.stringify(updated)),
+        },
+      });
+
+      return {
+        success: true,
+        message: "Payment updated successfully.",
+        payment: updated,
+      };
     },
     {
+      params: t.Object({ id: t.String() }),
       body: t.Partial(
         t.Object({
-          amount: t.Number(),
-          method: paymentMethodSchema,
-          referenceNumber: t.String(),
-          status: t.String(),
+          amount: t.Optional(t.Number()),
+          method: t.Optional(t.String()),
+          referenceNumber: t.Optional(t.String()),
+          status: t.Optional(t.String()),
         }),
       ),
     },
   )
 
-  /**
-   * 5. DELETE: SOFT-DELETE (VOID PAYMENT)
-   */
-  .delete("/:id", async ({ params: { id }, tenantId, userId }) => {
-    return prisma.$transaction(async (tx) => {
-      const deleted = await tx.payment.update({
-        where: { id, tenantId },
-        data: { deletedAt: new Date() },
+  .delete(
+    "/:id",
+    async ({ params: { id }, tenantId, userId, role, set }) => {
+      requireRoles(role, ["ADMIN", "SUPER_ADMIN"], set);
+
+      const payment = await prisma.payment.findFirst({
+        where: { id, tenantId, deletedAt: null },
+      });
+      if (!payment) {
+        set.status = 404;
+        return { success: false, message: "Payment not found." };
+      }
+
+      await prisma.$transaction(async (tx: any) => {
+        const deleted = await tx.payment.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId,
+            userId,
+            action: "DELETE",
+            entity: "Payment",
+            entityId: id,
+            oldData: JSON.parse(JSON.stringify(payment)),
+            newData: JSON.parse(JSON.stringify(deleted)),
+          },
+        });
       });
 
-      await tx.auditLog.create({
-        data: {
-          tenantId,
-          userId,
-          action: "DELETE",
-          entity: "Payment",
-          entityId: id,
-          oldData: JSON.parse(JSON.stringify(deleted)),
-        },
-      });
-      return { success: true };
-    });
-  });
+      return { success: true, message: "Payment deleted successfully." };
+    },
+    { params: t.Object({ id: t.String() }) },
+  );
+
+// import { Elysia, t } from "elysia";
+// import { prisma } from "../lib/prisma";
+// import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
+// import { paymentMethodSchema } from "../lib/schemas";
+// import { PaymentStatus } from "@prisma/client";
+
+// export const paymentRoutes = new Elysia({
+//   prefix: "/payments",
+// })
+//   .use(tenantAuthMiddleware)
+
+//   /**
+//    * 1. GET ALL PAYMENTS (Tenant Isolated)
+//    */
+//   .get("/", async ({ tenantId, query }) => {
+//     const page = parseInt(query.page as string) || 1;
+//     const limit = parseInt(query.limit as string) || 20;
+
+//     return prisma.payment.findMany({
+//       where: { tenantId, deletedAt: null },
+//       include: { order: true, processedBy: { select: { name: true } } },
+//       orderBy: { processedAt: "desc" },
+//       skip: (page - 1) * limit,
+//       take: limit,
+//     });
+//   })
+
+//   /**
+//    * 2. GET SINGLE PAYMENT
+//    */
+//   .get("/:id", async ({ params: { id }, tenantId, set }) => {
+//     const payment = await prisma.payment.findFirst({
+//       where: { id, tenantId, deletedAt: null },
+//       include: { order: true, processedBy: true },
+//     });
+//     if (!payment) {
+//       set.status = 404;
+//       return { success: false, message: "Payment not found" };
+//     }
+//     return payment;
+//   })
+
+//   /**
+//    * 3. POST: PROCESS PAYMENT
+//    */
+//   .post(
+//     "/",
+//     async ({ body, tenantId, userId, set }) => {
+//       const payment = await prisma.$transaction(async (tx) => {
+//         const created = await tx.payment.create({
+//           data: {
+//             tenantId,
+//             orderId: body.orderId,
+//             amount: body.amount,
+//             method: body.method,
+//             referenceNumber: body.referenceNumber,
+//             // status: body.status || "PAID",
+//             // status: PaymentStatus.PAID,
+//             status: body.status
+//               ? (body.status as PaymentStatus)
+//               : PaymentStatus.PAID,
+//             processedById: userId, // Token မှရသော User ID ကိုသုံးခြင်း
+//           },
+//         });
+
+//         await tx.auditLog.create({
+//           data: {
+//             tenantId,
+//             userId,
+//             action: "CREATE",
+//             entity: "Payment",
+//             entityId: created.id,
+//             newData: JSON.parse(JSON.stringify(created)),
+//           },
+//         });
+//         return created;
+//       });
+
+//       set.status = 201;
+//       return { success: true, payment };
+//     },
+//     {
+//       body: t.Object({
+//         orderId: t.String(),
+//         amount: t.Number(),
+//         method: paymentMethodSchema,
+//         referenceNumber: t.Optional(t.String()),
+//         status: t.Optional(t.String()),
+//       }),
+//     },
+//   )
+
+//   /**
+//    * 4. PUT: UPDATE PAYMENT (e.g. Voiding or updating reference)
+//    */
+//   .put(
+//     "/:id",
+//     async ({ params: { id }, body, tenantId, userId }) => {
+//       const current = await prisma.payment.findFirst({
+//         where: { id, tenantId },
+//       });
+//       if (!current) throw new Error("Payment not found");
+
+//       return prisma.$transaction(async (tx) => {
+//         const updated = await tx.payment.update({
+//           where: { id },
+//           data: {
+//             amount: body.amount ?? undefined,
+//             method: body.method ?? undefined,
+//             referenceNumber: body.referenceNumber ?? undefined,
+//             // status: body.status ?? undefined,
+//             // status: PaymentStatus.PENDING,
+//             status: body.status ? (body.status as PaymentStatus) : undefined,
+//           },
+//         });
+
+//         await tx.auditLog.create({
+//           data: {
+//             tenantId,
+//             userId,
+//             action: "UPDATE",
+//             entity: "Payment",
+//             entityId: id,
+//             oldData: JSON.parse(JSON.stringify(current)),
+//             newData: JSON.parse(JSON.stringify(updated)),
+//           },
+//         });
+//         return updated;
+//       });
+//     },
+//     {
+//       body: t.Partial(
+//         t.Object({
+//           amount: t.Number(),
+//           method: paymentMethodSchema,
+//           referenceNumber: t.String(),
+//           status: t.String(),
+//         }),
+//       ),
+//     },
+//   )
+
+//   /**
+//    * 5. DELETE: SOFT-DELETE (VOID PAYMENT)
+//    */
+//   .delete("/:id", async ({ params: { id }, tenantId, userId }) => {
+//     return prisma.$transaction(async (tx) => {
+//       const deleted = await tx.payment.update({
+//         where: { id, tenantId },
+//         data: { deletedAt: new Date() },
+//       });
+
+//       await tx.auditLog.create({
+//         data: {
+//           tenantId,
+//           userId,
+//           action: "DELETE",
+//           entity: "Payment",
+//           entityId: id,
+//           oldData: JSON.parse(JSON.stringify(deleted)),
+//         },
+//       });
+//       return { success: true };
+//     });
+//   });
