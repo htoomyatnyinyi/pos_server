@@ -50,7 +50,7 @@ export const authRoutes = new Elysia()
 
           const hashedPassword = await bcrypt.hash(body.password, 12);
 
-          const user = await prisma.$transaction(async (tx) => {
+          const user = await prisma.$transaction(async (tx: any) => {
             const tenant = await tx.tenant.create({
               data: {
                 code:
@@ -96,7 +96,7 @@ export const authRoutes = new Elysia()
           });
 
           const token = await jwt.sign({
-            id: user.id,
+            sub: user.id,
             tenantId: user.tenantId,
             role: user.role,
           });
@@ -156,7 +156,7 @@ export const authRoutes = new Elysia()
           });
 
           const token = await jwt.sign({
-            id: user.id,
+            sub: user.id,
             tenantId: user.tenantId,
             role: user.role,
           });
@@ -459,7 +459,7 @@ export const authRoutes = new Elysia()
           }
 
           const token = await jwt.sign({
-            id: user!.id,
+            sub: user!.id,
             tenantId: user!.tenantId,
             role: user!.role,
           });
