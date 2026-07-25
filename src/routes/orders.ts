@@ -8,6 +8,7 @@ import { validateStore, requireRoles } from "../lib/security";
 export const orderRoutes = new Elysia({ prefix: "/orders" })
   .use(tenantAuthMiddleware)
 
+  // ─── GET orders ──────────────────────────────────────────
   .get(
     "/",
     async ({ tenantId, query }) => {
@@ -54,6 +55,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     },
   )
 
+  // ─── GET order by ID ─────────────────────────────────────
   .get(
     "/:id",
     async ({ params: { id }, tenantId, set }) => {
@@ -74,10 +76,13 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     { params: t.Object({ id: t.String() }) },
   )
 
+  // ─── POST create order ─────────────────────────────────────
   .post(
     "/",
     async ({ body, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
+
+      console.log("role", role, tenantId, userId, "session", body.sessionId);
 
       // Validate store
       await validateStore(body.storeId, tenantId);
@@ -103,7 +108,50 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
         }
       }
 
-      // Validate all products exist and belong to tenant
+      // ─── AUTO‑REGISTER LOGIC ──────────────────────────────────
+      let registerId = body.registerId;
+      if (!registerId) {
+        const existingRegister = await prisma.cashRegister.findFirst({
+          where: {
+            storeId: body.storeId,
+            tenantId,
+            status: "OPEN",
+          },
+        });
+        if (existingRegister) {
+          registerId = existingRegister.id;
+        } else {
+          const newRegister = await prisma.cashRegister.create({
+            data: {
+              tenantId,
+              storeId: body.storeId,
+              name: "Default POS Register",
+              status: "OPEN",
+            },
+          });
+          registerId = newRegister.id;
+        }
+      } else {
+        // If provided, verify it exists and is open
+        const register = await prisma.cashRegister.findFirst({
+          where: {
+            id: registerId,
+            storeId: body.storeId,
+            tenantId,
+            status: "OPEN",
+          },
+        });
+        if (!register) {
+          set.status = 400;
+          return {
+            success: false,
+            message:
+              "Invalid or closed cash register. Please provide a valid register.",
+          };
+        }
+      }
+
+      // ─── Validate products & check stock (variant‑aware) ──
       const productIds = body.items.map((i) => i.productId);
       const products = await prisma.product.findMany({
         where: {
@@ -115,6 +163,25 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
         include: { variants: true },
       });
       const productMap = new Map(products.map((p: any) => [p.id, p]));
+
+      // Build inventory map (key: productId or productId:variantId)
+      const invMap = new Map<string, any>();
+      for (const item of body.items) {
+        const key = item.variantId
+          ? `${item.productId}:${item.variantId}`
+          : item.productId;
+        const inv = await prisma.inventory.findFirst({
+          where: {
+            storeId: body.storeId,
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            tenantId,
+          },
+        });
+        invMap.set(key, inv || { quantity: 0 });
+      }
+
+      // Validate each item
       for (const item of body.items) {
         const product = productMap.get(item.productId);
         if (!product) {
@@ -124,10 +191,9 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
             message: `Product ${item.productId} not found or inactive.`,
           };
         }
+        let variant = null;
         if (item.variantId) {
-          const variant = product.variants.find(
-            (v: any) => v.id === item.variantId,
-          );
+          variant = product.variants.find((v: any) => v.id === item.variantId);
           if (!variant) {
             set.status = 400;
             return {
@@ -136,7 +202,22 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
             };
           }
         }
-        // Optional: check inventory availability (skip for brevity)
+        console.log("============>item", item);
+        const key = item.variantId
+          ? `${item.productId}:${item.variantId}`
+          : item.productId;
+
+        const inv = invMap.get(key);
+        console.log("============>inv", inv);
+
+        const currentStock = inv?.quantity || 0;
+        if (currentStock < item.quantity) {
+          set.status = 400;
+          return {
+            success: false,
+            message: `Insufficient stock for ${product.name}${variant ? ` (${variant.name})` : ""}. Available: ${currentStock}, Required: ${item.quantity}.`,
+          };
+        }
       }
 
       const orderNumber = `ORD-${Date.now()}`;
@@ -159,7 +240,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
             customerId: body.customerId,
             sessionId: body.sessionId,
             storeId: body.storeId,
-            registerId: body.registerId,
+            registerId, // now always defined
             items: {
               create: body.items.map((item) => ({
                 productId: item.productId,
@@ -174,13 +255,13 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
           include: { items: true },
         });
 
-        // Deduct inventory
+        // Deduct inventory (variant‑aware)
         for (const item of order.items) {
           await adjustInventory(tx, {
             tenantId,
             storeId: body.storeId,
             productId: item.productId,
-            variantId: item.variantId,
+            variantId: item.variantId, // include variantId
             quantityDelta: -item.quantity,
             userId,
             type: "SALE",
@@ -201,7 +282,6 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
           } else if (["KBZ_PAY", "CB_PAY", "WAVE_PAY"].includes(method)) {
             updateField.digitalSales = { increment: body.grandTotal };
           } else {
-            // For MIXED_PAYMENT, GIFT_CARD, WALLET – treat as digital for now
             updateField.digitalSales = { increment: body.grandTotal };
           }
           await tx.session.update({
@@ -258,6 +338,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     },
   )
 
+  // ─── PATCH complete order ─────────────────────────────────
   .patch(
     "/:id/complete",
     async ({ params: { id }, tenantId, userId, role, set }) => {
@@ -301,6 +382,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     { params: t.Object({ id: t.String() }) },
   )
 
+  // ─── PATCH update order status ────────────────────────────
   .patch(
     "/:id/status",
     async ({ params: { id }, body, tenantId, userId, role, set }) => {
@@ -339,6 +421,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     },
   )
 
+  // ─── DELETE / void order ──────────────────────────────────
   .delete(
     "/:id",
     async ({ params: { id }, tenantId, role, userId, set }) => {
@@ -400,34 +483,30 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     { params: t.Object({ id: t.String() }) },
   );
 
+// original
 // import { Elysia, t } from "elysia";
 // import { prisma } from "../lib/prisma";
 // import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 // import { adjustInventory } from "../lib/inventory";
 // import { OrderStatus, PaymentMethod, PaymentStatus } from "@prisma/client";
-// import { requireRoles, validateStore } from "../lib/security";
+// import { validateStore, requireRoles } from "../lib/security";
 
 // export const orderRoutes = new Elysia({ prefix: "/orders" })
-//   // 🔐 Multi-Tenant Authentication & Context Middleware
 //   .use(tenantAuthMiddleware)
 
-//   /**
-//    * 1. GET ALL ORDERS WITH TENANT ISOLATION & PAGINATION
-//    */
 //   .get(
 //     "/",
 //     async ({ tenantId, query }) => {
 //       const page = query.page ? parseInt(query.page as string) : 1;
 //       const limit = query.limit ? parseInt(query.limit as string) : 20;
 //       const skip = (page - 1) * limit;
-
 //       const whereCondition: any = {
-//         tenantId, // Strict Security Boundary
+//         tenantId,
+//         deletedAt: null,
 //         ...(query.storeId ? { storeId: query.storeId as string } : {}),
 //         ...(query.sessionId ? { sessionId: query.sessionId as string } : {}),
 //         ...(query.status ? { status: query.status as OrderStatus } : {}),
 //       };
-
 //       const [total, orders] = await prisma.$transaction([
 //         prisma.order.count({ where: whereCondition }),
 //         prisma.order.findMany({
@@ -442,15 +521,9 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //           take: limit,
 //         }),
 //       ]);
-
 //       return {
 //         success: true,
-//         meta: {
-//           total,
-//           page,
-//           limit,
-//           totalPages: Math.ceil(total / limit),
-//         },
+//         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
 //         orders,
 //       };
 //     },
@@ -467,72 +540,95 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //     },
 //   )
 
-//   /**
-//    * 2. GET SINGLE ORDER BY ID
-//    */
 //   .get(
 //     "/:id",
 //     async ({ params: { id }, tenantId, set }) => {
 //       const order = await prisma.order.findFirst({
-//         where: { id, tenantId }, // ပြင်ပ လုပ်ငန်းခွဲမှ လှမ်းကြည့်၍မရအောင် ကာကွယ်ခြင်း
+//         where: { id, tenantId, deletedAt: null },
 //         include: {
 //           items: { include: { product: true, variant: true } },
 //           user: { select: { id: true, name: true, email: true } },
 //           customer: true,
 //         },
 //       });
-
 //       if (!order) {
 //         set.status = 404;
 //         return { success: false, message: "Order not found or access denied." };
 //       }
-
 //       return { success: true, order };
 //     },
 //     { params: t.Object({ id: t.String() }) },
 //   )
 
-//   /**
-//    * 3. POST: CREATE ORDER, DEDUCT STOCKS, INCREMENT SESSION CASH & AUDIT LOG
-//    */
 //   .post(
 //     "/",
-//     async ({ body, tenantId, userId, set, role }) => {
-//       // Role check – only managers and admins can create orders
-//       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+//     async ({ body, tenantId, userId, role, set }) => {
+//       requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
 
 //       // Validate store
 //       await validateStore(body.storeId, tenantId);
 
-//       // Optionally validate session if provided
+//       // Validate session if provided
 //       if (body.sessionId) {
 //         const session = await prisma.session.findFirst({
 //           where: { id: body.sessionId, tenantId, status: "OPEN" },
 //         });
 //         if (!session) {
 //           set.status = 400;
-//           return { success: false, message: "Invalid or closed session." };
-//         }
-//       }
-//       // Cashier Session Active ဖြစ်မဖြစ် စစ်ဆေးခြင်း
-//       if (body.sessionId) {
-//         const activeSession = await prisma.session.findFirst({
-//           where: { id: body.sessionId, tenantId, status: "OPEN" },
-//         });
-//         if (!activeSession) {
-//           set.status = 400;
 //           return {
 //             success: false,
 //             message: "The provided register session is closed or invalid.",
 //           };
 //         }
+//         if (session.storeId !== body.storeId) {
+//           set.status = 400;
+//           return {
+//             success: false,
+//             message: "Store mismatch between session and order.",
+//           };
+//         }
+//       }
+
+//       // Validate all products exist and belong to tenant
+//       const productIds = body.items.map((i) => i.productId);
+//       const products = await prisma.product.findMany({
+//         where: {
+//           id: { in: productIds },
+//           tenantId,
+//           isActive: true,
+//           deletedAt: null,
+//         },
+//         include: { variants: true },
+//       });
+//       const productMap = new Map(products.map((p: any) => [p.id, p]));
+//       for (const item of body.items) {
+//         const product = productMap.get(item.productId);
+//         if (!product) {
+//           set.status = 400;
+//           return {
+//             success: false,
+//             message: `Product ${item.productId} not found or inactive.`,
+//           };
+//         }
+//         if (item.variantId) {
+//           const variant = product.variants.find(
+//             (v: any) => v.id === item.variantId,
+//           );
+//           if (!variant) {
+//             set.status = 400;
+//             return {
+//               success: false,
+//               message: `Variant ${item.variantId} not found.`,
+//             };
+//           }
+//         }
+//         // Optional: check inventory availability (skip for brevity)
 //       }
 
 //       const orderNumber = `ORD-${Date.now()}`;
 
-//       return await prisma.$transaction(async (tx: any) => {
-//         // (က) Order နှင့် Order Items များကို Database ထဲသိမ်းဆည်းခြင်း
-//         const createdOrder = await tx.order.create({
+//       const createdOrder = await prisma.$transaction(async (tx: any) => {
+//         const order = await tx.order.create({
 //           data: {
 //             tenantId,
 //             orderNumber,
@@ -542,15 +638,14 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //             grandTotal: body.grandTotal,
 //             paidAmount: body.paidAmount,
 //             changeAmount: body.changeAmount,
-//             paymentStatus: PaymentStatus.PAID,
-//             status: OrderStatus.COMPLETED,
+//             paymentStatus: PaymentStatus.PENDING,
+//             status: OrderStatus.PENDING,
 //             paymentMethod: body.paymentMethod as PaymentMethod,
-//             userId, // Auth Middleware မှရရှိလာသော Cashier User ID
+//             userId,
 //             customerId: body.customerId,
 //             sessionId: body.sessionId,
 //             storeId: body.storeId,
 //             registerId: body.registerId,
-//             completedAt: new Date(),
 //             items: {
 //               create: body.items.map((item) => ({
 //                 productId: item.productId,
@@ -565,59 +660,62 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //           include: { items: true },
 //         });
 
-//         // (ခ) 🚀 Real-time Stock Deduction & Stock Movement Tracking
-//         for (const item of createdOrder.items) {
+//         // Deduct inventory
+//         for (const item of order.items) {
 //           await adjustInventory(tx, {
 //             tenantId,
 //             storeId: body.storeId,
 //             productId: item.productId,
 //             variantId: item.variantId,
-//             quantityDelta: -item.quantity, // အရောင်းဖြစ်၍ စတော့နှုတ်ရန် အနှုတ်ကိန်းပြရပါမည်
+//             quantityDelta: -item.quantity,
 //             userId,
-//             type: "SALE", // Schema MovementType Enum
-//             referenceId: createdOrder.id,
+//             type: "SALE",
+//             referenceId: order.id,
 //             referenceType: "Order",
 //             reason: `POS Checkout - Voucher: ${orderNumber}`,
 //           });
 //         }
 
-//         // (ဂ) Update Register Session Tracker Balance
+//         // Update session sales if session provided
 //         if (body.sessionId) {
 //           const updateField: any = {};
-//           if (body.paymentMethod === "CASH") {
+//           const method = body.paymentMethod as PaymentMethod;
+//           if (method === "CASH") {
 //             updateField.cashSales = { increment: body.grandTotal };
-//           } else if (body.paymentMethod === "CARD") {
+//           } else if (method === "CARD") {
 //             updateField.cardSales = { increment: body.grandTotal };
+//           } else if (["KBZ_PAY", "CB_PAY", "WAVE_PAY"].includes(method)) {
+//             updateField.digitalSales = { increment: body.grandTotal };
 //           } else {
-//             // KBZ_PAY, WAVE_PAY, CB_PAY etc -> Digital Wallet Sales
+//             // For MIXED_PAYMENT, GIFT_CARD, WALLET – treat as digital for now
 //             updateField.digitalSales = { increment: body.grandTotal };
 //           }
-
 //           await tx.session.update({
 //             where: { id: body.sessionId },
 //             data: updateField,
 //           });
 //         }
 
-//         // (ဃ) Create System Audit Log Tracking
 //         await tx.auditLog.create({
 //           data: {
 //             tenantId,
 //             userId,
 //             action: "CREATE",
 //             entity: "Order",
-//             entityId: createdOrder.id,
-//             newData: JSON.parse(JSON.stringify(createdOrder)),
+//             entityId: order.id,
+//             newData: JSON.parse(JSON.stringify(order)),
 //           },
 //         });
 
-//         set.status = 201;
-//         return {
-//           success: true,
-//           message: "Order placed successfully.",
-//           order: createdOrder,
-//         };
+//         return order;
 //       });
+
+//       set.status = 201;
+//       return {
+//         success: true,
+//         message: "Order placed successfully.",
+//         order: createdOrder,
+//       };
 //     },
 //     {
 //       body: t.Object({
@@ -625,7 +723,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //         taxAmount: t.Optional(t.Number()),
 //         discountAmount: t.Optional(t.Number()),
 //         grandTotal: t.Number(),
-//         paymentMethod: t.String(), // Schema PaymentMethod Enum သုံးရန် String အဖြစ်ပြောင်းလဲထားပါသည်
+//         paymentMethod: t.String(),
 //         paidAmount: t.Number(),
 //         changeAmount: t.Number(),
 //         customerId: t.Optional(t.String()),
@@ -646,27 +744,64 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //     },
 //   )
 
-//   /**
-//    * 4. PATCH: UPDATE ORDER STATUS WITH AUDIT TRACK
-//    */
 //   .patch(
-//     "/:id/status",
-//     async ({ params: { id }, body, tenantId, userId, set }) => {
+//     "/:id/complete",
+//     async ({ params: { id }, tenantId, userId, role, set }) => {
+//       requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
 //       const order = await prisma.order.findFirst({
 //         where: { id, tenantId },
+//         include: { items: true },
 //       });
-
 //       if (!order) {
 //         set.status = 404;
 //         return { success: false, message: "Order not found." };
 //       }
+//       if (order.status !== OrderStatus.PENDING) {
+//         set.status = 400;
+//         return {
+//           success: false,
+//           message: "Only pending orders can be completed.",
+//         };
+//       }
+//       const updated = await prisma.order.update({
+//         where: { id },
+//         data: {
+//           status: OrderStatus.COMPLETED,
+//           paymentStatus: PaymentStatus.PAID,
+//           completedAt: new Date(),
+//         },
+//       });
+//       await prisma.auditLog.create({
+//         data: {
+//           tenantId,
+//           userId,
+//           action: "UPDATE",
+//           entity: "Order",
+//           entityId: id,
+//           oldData: JSON.parse(JSON.stringify(order)),
+//           newData: JSON.parse(JSON.stringify(updated)),
+//         },
+//       });
+//       return { success: true, message: "Order completed.", order: updated };
+//     },
+//     { params: t.Object({ id: t.String() }) },
+//   )
 
+//   .patch(
+//     "/:id/status",
+//     async ({ params: { id }, body, tenantId, userId, role, set }) => {
+//       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+//       const order = await prisma.order.findFirst({
+//         where: { id, tenantId },
+//       });
+//       if (!order) {
+//         set.status = 404;
+//         return { success: false, message: "Order not found." };
+//       }
 //       const updatedOrder = await prisma.order.update({
 //         where: { id },
 //         data: { status: body.status as OrderStatus },
 //       });
-
-//       // Audit Log For Status Change
 //       await prisma.auditLog.create({
 //         data: {
 //           tenantId,
@@ -678,10 +813,9 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //           newData: JSON.parse(JSON.stringify(updatedOrder)),
 //         },
 //       });
-
 //       return {
 //         success: true,
-//         message: "Order status updated successfully.",
+//         message: "Order status updated.",
 //         order: updatedOrder,
 //       };
 //     },
@@ -691,33 +825,23 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //     },
 //   )
 
-//   /**
-//    * 5. DELETE: CANCEL/VOID ORDER (Data Preservation Logic)
-//    */
 //   .delete(
 //     "/:id",
 //     async ({ params: { id }, tenantId, role, userId, set }) => {
-//       // Management Checking
-//       if (role !== "ADMIN" && role !== "SUPER_ADMIN" && role !== "MANAGER") {
-//         set.status = 403;
-//         return {
-//           success: false,
-//           message: "Forbidden: Only authorized staff can void orders.",
-//         };
-//       }
-
+//       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
 //       const order = await prisma.order.findFirst({
 //         where: { id, tenantId },
 //         include: { items: true },
 //       });
-
 //       if (!order) {
 //         set.status = 404;
 //         return { success: false, message: "Order not found or access denied." };
 //       }
-
+//       if (order.status === OrderStatus.VOIDED) {
+//         set.status = 400;
+//         return { success: false, message: "Order already voided." };
+//       }
 //       return await prisma.$transaction(async (tx: any) => {
-//         // ဒေတာရင်းမြစ်မပျောက်ပျက်စေရန် အမှန်တကယ် Hard Delete မလုပ်ဘဲ Status ကို VOIDED ပြောင်းလဲပါမည်
 //         const voidedOrder = await tx.order.update({
 //           where: { id },
 //           data: {
@@ -725,8 +849,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //             paymentStatus: PaymentStatus.REFUNDED,
 //           },
 //         });
-
-//         // 🚀 ပစ္စည်းများကို စတော့ခ်ထဲ ပြန်လည်ဖြည့်သွင်းပေးခြင်း (Restock Counter)
+//         // Restock inventory
 //         for (const item of order.items) {
 //           if (order.storeId) {
 //             await adjustInventory(tx, {
@@ -734,32 +857,29 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 //               storeId: order.storeId,
 //               productId: item.productId,
 //               variantId: item.variantId,
-//               quantityDelta: item.quantity, // 👈 ပစ္စည်းပြန်ဝင်လာ၍ အပေါင်းကိန်းပြပါသည်
+//               quantityDelta: item.quantity,
 //               userId,
-//               type: "RETURN_IN", // Schema MovementType Enum
+//               type: "RETURN_IN",
 //               referenceId: order.id,
 //               referenceType: "Order",
 //               reason: `Voucher Cancelled/Voided - Restocking Items`,
 //             });
 //           }
 //         }
-
-//         // Log the Event
 //         await tx.auditLog.create({
 //           data: {
 //             tenantId,
 //             userId,
-//             action: "VOID", // Schema AuditAction.VOID Enum
+//             action: "VOID",
 //             entity: "Order",
 //             entityId: id,
 //             oldData: JSON.parse(JSON.stringify(order)),
 //             newData: JSON.parse(JSON.stringify(voidedOrder)),
 //           },
 //         });
-
 //         return {
 //           success: true,
-//           message: "Order successfully voided and inventory restored.",
+//           message: "Order voided and inventory restored.",
 //         };
 //       });
 //     },

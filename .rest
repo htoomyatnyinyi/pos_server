@@ -35,7 +35,8 @@ Content-Type: {{contentType}}
 
 ### Extract token for subsequent requests
 @authToken = {{login.response.body.token}}
-@tenantId = {{login.response.body.user.tenantId}}
+# @tenantId = {{login.response.body.user.tenantId}}
+@tenantId = cmrspovg9000001mj0b1dp0r5
 @userId = {{login.response.body.user.id}}
 
 ### 1.3 Verify Email OTP (use the OTP logged in console)
@@ -239,7 +240,8 @@ Content-Type: {{contentType}}
 }
 
 ### Extract categoryId
-@categoryId = {{createCategory.response.body.category.id}}
+# @categoryId = {{createCategory.response.body.category.id}}
+@categoryId = cmrsqsg67000101mmy17lndc2
 
 ### 6.2 List Categories
 GET {{baseUrl}}/api/tenant/categories?page=1&limit=20
@@ -278,7 +280,8 @@ Content-Type: {{contentType}}
 }
 
 ### Extract brandId
-@brandId = {{createBrand.response.body.brand.id}}
+# @brandId = {{createBrand.response.body.brand.id}}
+@brandId = cmrsxt5io000401qi4je8mesp
 
 ### 7.2 List Brands
 GET {{baseUrl}}/api/tenant/brands?page=1&limit=20
@@ -397,24 +400,58 @@ Authorization: Bearer {{authToken}}
 
 ### 10.1 Create Product (with variants and initial stock)
 # @name createProduct
+# POST {{baseUrl}}/api/tenant/products
+# Authorization: Bearer {{authToken}}
+# Content-Type: {{contentType}}
+
+# {
+#   "name": "iPhone 125 Pro",
+#   "sku": "APL-IP15P-002",
+#   "barcode": "12345678904234",
+#   "costPrice": 999.99,
+#   "sellingPrice": 1299.99,
+#   "wholesalePrice": 1199.99,
+#   "categoryId": "{{categoryId}}",
+#   "brandId": "{{brandId}}",
+#   "supplierId": "{{supplierId}}",
+#   "description": "Latest iPhone with A17 chip",
+#   # "isTaxable": false,
+#   # "isActive": true,
+#   # "isReturnable": false,
+#   "storeId": "{{storeId}}",
+#   "initialStock": 10,
+#   "variants": [
+#     {
+#       "name": "128GB Black",
+#       "price": 1299.99,
+#       "costPrice": 999.99,
+#       "color": "Black"
+#     },
+#     {
+#       "name": "256GB Silver",
+#       "price": 1399.99,
+#       "costPrice": 1099.99,
+#       "color": "Silver"
+#     }
+#   ]
+# }
+
+###
 POST {{baseUrl}}/api/tenant/products
 Authorization: Bearer {{authToken}}
 Content-Type: {{contentType}}
 
+
 {
   "name": "iPhone 15 Pro",
-  "sku": "APL-IP15P-001",
-  "barcode": "1234567890123",
+  "sku": "APL-IP15P-022",
+  "barcode": "9876543297",
   "costPrice": 999.99,
   "sellingPrice": 1299.99,
   "wholesalePrice": 1199.99,
-  "categoryId": "{{categoryId}}",
+  "categoryId": "{{categoryId}}", 
   "brandId": "{{brandId}}",
   "supplierId": "{{supplierId}}",
-  "description": "Latest iPhone with A17 chip",
-  "isTaxable": true,
-  "isActive": true,
-  "isReturnable": true,
   "storeId": "{{storeId}}",
   "initialStock": 10,
   "variants": [
@@ -423,18 +460,13 @@ Content-Type: {{contentType}}
       "price": 1299.99,
       "costPrice": 999.99,
       "color": "Black"
-    },
-    {
-      "name": "256GB Silver",
-      "price": 1399.99,
-      "costPrice": 1099.99,
-      "color": "Silver"
     }
   ]
 }
 
 ### Extract productId
-@productId = {{createProduct.response.body.product.id}}
+# @productId = {{createProduct.response.body.product.id}}
+@productId = cmru09a73001k01kqjiwyt1r3
 
 ### 10.2 List Products (with filters)
 GET {{baseUrl}}/api/tenant/products?page=1&limit=10&storeId={{storeId}}&categoryId={{categoryId}}
@@ -517,6 +549,7 @@ Content-Type: {{contentType}}
 ### ============================================
 
 ### 12.1 Open Session
+
 # @name openSession
 POST {{baseUrl}}/api/tenant/sessions/open
 Authorization: Bearer {{authToken}}
@@ -573,7 +606,6 @@ Content-Type: {{contentType}}
   "customerId": "{{customerId}}",
   "sessionId": "{{sessionId}}",
   "storeId": "{{storeId}}",
-  "registerId": "REG-001",
   "items": [
     {
       "productId": "{{productId}}",
@@ -586,6 +618,7 @@ Content-Type: {{contentType}}
 }
 
 ### Extract orderId
+  # "registerId": "REG-001",
 @orderId = {{createOrder.response.body.order.id}}
 
 ### 13.2 Complete Order (move from PENDING to COMPLETED)

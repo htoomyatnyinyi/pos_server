@@ -42,6 +42,7 @@ import { reportRoutes } from "./routes/reports";
 import { accountRoutes } from "./routes/accounts";
 import { journalEntryRoutes } from "./routes/journal-entries";
 import { dashboardRoutes } from "./routes/dashboard";
+import { syncRoutes } from "./routes/sync";
 
 const app = new Elysia()
   .use(swagger())
@@ -74,6 +75,7 @@ const app = new Elysia()
       // 1. Public routes – no auth required
       .use(authRoutes)
       .use(platformAuthRoutes)
+      .use(syncRoutes)
 
       // Dashboard routes (both tenant and platform)
       .use(dashboardRoutes)
