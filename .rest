@@ -32,6 +32,16 @@ Content-Type: {{contentType}}
   "password": "password123",
   "tenantCode": "JOHNS"
 }
+### 1.2 Login (requires tenantCode)
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@demo.com",
+  "password": "staff123",
+  "tenantCode": "DEMO-TNT"
+}
 
 ### Extract token for subsequent requests
 @authToken = {{login.response.body.token}}
@@ -181,7 +191,7 @@ Content-Type: {{contentType}}
 
 ### Extract storeId
 # @storeId = {{createStore.response.body.store.id}}
-@storeId = cmrspovgp000101mjxlxva7yc
+@storeId = cms63mr7000066yleypfe235e
 ### 5.2 List All Stores (Tenant)
 GET {{baseUrl}}/api/tenant/stores
 Authorization: Bearer {{authToken}}
@@ -999,6 +1009,9 @@ Content-Type: {{contentType}}
 @staffId = {{createStaff.response.body.staff.id}}
 
 ### 22.2 List Staff
+GET {{baseUrl}}/api/tenant/staff?storeId={{storeId}}
+Authorization: Bearer {{authToken}}
+### 22.2 List Staff
 GET {{baseUrl}}/api/tenant/staff?storeId={{storeId}}&role=MANAGER
 Authorization: Bearer {{authToken}}
 
@@ -1141,7 +1154,9 @@ Content-Type: {{contentType}}
 }
 
 ### Extract registerId
-@registerId = {{createRegister.response.body.register.id}}
+# @registerId = {{createRegister.response.body.register.id}}
+# @registerId = {{createRegister.response.body.register.id}}
+@registerId = "default-register"
 
 ### 25.2 List Cash Registers
 GET {{baseUrl}}/api/tenant/cash-registers?storeId={{storeId}}

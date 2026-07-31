@@ -1,0 +1,487 @@
+## ✅ Full Implementation of Cash Registers in Offline Schema
+
+Here’s the complete code to add cash register support to your offline‑first app.
+
+---
+
+### 1. Update `schema.ts` – Add `cashRegisters` table
+
+Add this to `services/offline/schema.ts` (after the other tables, before the relations):
+
+```typescript
+// ============================================
+// CASH REGISTERS
+// ============================================
+export const cashRegisters = sqliteTable(
+  "cash_registers",
+  {
+    id: text("id").primaryKey(),
+    remoteId: text("remote_id").unique(),
+    tenantId: text("tenant_id").notNull(),
+    storeId: text("store_id").notNull(),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("CLOSED"), // OPEN, CLOSED, SUSPENDED, MAINTENANCE
+    deletedAt: text("deleted_at"),
+    syncStatus: text("sync_status").notNull().default("synced"),
+    syncError: text("sync_error"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    lastSyncedAt: text("last_synced_at"),
+  },
+  (table) => ({
+    tenantStoreIdx: index("cash_registers_tenant_store_idx").on(
+      table.tenantId,
+      table.storeId,
+    ),
+    storeIdx: index("cash_registers_store_idx").on(table.storeId),
+    statusIdx: index("cash_registers_status_idx").on(table.status),
+    tenantIdx: index("cash_registers_tenant_idx").on(table.tenantId),
+  }),
+);
+
+// Add relations (optional)
+export const cashRegistersRelations = relations(cashRegisters, ({ one }) => ({
+  store: one(stores, {
+    fields: [cashRegisters.storeId],
+    references: [stores.id],
+  }),
+}));
+```
+
+Also update `storesRelations` if you want a reverse relation:
+
+```typescript
+export const storesRelations = relations(stores, ({ many }) => ({
+  // ... existing
+  cashRegisters: many(cashRegisters),
+}));
+```
+
+And add `cashRegisters` to the `syncEntities` list at the top:
+
+```typescript
+export const syncEntities = [
+  // ... existing
+  "cash_registers",
+] as const;
+```
+
+---
+
+### 2. Add Type Exports
+
+At the bottom of `schema.ts`, add:
+
+```typescript
+export type LocalCashRegister = typeof cashRegisters.$inferSelect;
+export type InsertCashRegister = typeof cashRegisters.$inferInsert;
+```
+
+---
+
+### 3. Add `upsertCashRegisters` to `repository.ts`
+
+Add this function near the other upsert functions:
+
+```typescript
+// ============================================
+// UPSERT CASH REGISTERS
+// ============================================
+export async function upsertCashRegisters(
+  remoteRegisters: any[],
+  defaultTenantId: string,
+) {
+  if (!remoteRegisters.length) return;
+  const now = new Date().toISOString();
+
+  const registersToInsert = remoteRegisters.map((r) => ({
+    id: r.id,
+    remoteId: r.remoteId,
+    tenantId: r.tenantId || defaultTenantId,
+    storeId: r.storeId,
+    name: r.name,
+    status: r.status || "CLOSED",
+    deletedAt: r.deletedAt,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: r.createdAt ?? now,
+    updatedAt: r.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
+  await getOfflineDb()
+    .insert(cashRegisters)
+    .values(registersToInsert)
+    .onConflictDoUpdate({
+      target: cashRegisters.id,
+      set: {
+        name: sql`excluded.name`,
+        status: sql`excluded.status`,
+        storeId: sql`excluded.store_id`,
+        deletedAt: sql`excluded.deleted_at`,
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: sql`excluded.updated_at`,
+        lastSyncedAt: now,
+      },
+    });
+}
+```
+
+Also add a helper to get local registers:
+
+```typescript
+// ============================================
+// GET LOCAL CASH REGISTERS
+// ============================================
+export async function getLocalCashRegisters(storeId?: string) {
+  const db = getOfflineDb();
+  let query = db.select().from(cashRegisters).$dynamic();
+
+  if (storeId) {
+    query = query.where(eq(cashRegisters.storeId, storeId));
+  }
+
+  const rows = await query.where(eq(cashRegisters.deletedAt, null));
+  return rows.map((row) => toCashRegister(row));
+}
+
+export async function getLocalCashRegisterById(id: string) {
+  const db = getOfflineDb();
+  const [row] = await db
+    .select()
+    .from(cashRegisters)
+    .where(and(eq(cashRegisters.id, id), eq(cashRegisters.deletedAt, null)))
+    .limit(1);
+  return row ? toCashRegister(row) : undefined;
+}
+```
+
+Add conversion function:
+
+```typescript
+function toCashRegister(register: any): any {
+  return {
+    id: register.id,
+    tenantId: register.tenantId,
+    storeId: register.storeId,
+    name: register.name,
+    status: register.status,
+    deletedAt: register.deletedAt,
+    createdAt: register.createdAt,
+    updatedAt: register.updatedAt,
+  };
+}
+```
+
+---
+
+### 4. Add `pullCashRegisters` to `syncManager.ts`
+
+In `syncManager.ts`, add:
+
+```typescript
+// ============================================
+// PULL CASH REGISTERS
+// ============================================
+async function pullCashRegisters(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping cash register pull");
+      return { synced: 0 };
+    }
+
+    if (!remoteApi.endpoints.getRemoteCashRegisters) {
+      console.warn("⚠️ getRemoteCashRegisters endpoint not available");
+      return { synced: 0 };
+    }
+
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteCashRegisters.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+
+    if (error) {
+      if (error.originalStatus === 404 || error.status === "PARSING_ERROR") {
+        return { synced: 0 };
+      }
+      console.error("❌ Cash register pull failed:", error);
+      return { synced: 0 };
+    }
+
+    const registersData = data?.cashRegisters || data?.data || data || [];
+    if (registersData.length > 0) {
+      await upsertCashRegisters(registersData, tenantId);
+      return { synced: registersData.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull cash registers:", error);
+    return { synced: 0 };
+  }
+}
+```
+
+Then add it to `syncNow` after pulling stores:
+
+```typescript
+// --- PULL Cash Registers ---
+if (!silent) console.log("📥 Pulling cash registers...");
+const registerResult = await pullCashRegisters(dispatch, tenantId);
+syncedItems += registerResult.synced;
+dispatch(setSyncProgress(12));
+if (!silent) console.log(`✅ Synced ${registerResult.synced} cash registers`);
+```
+
+Update progress numbers accordingly.
+
+---
+
+### 5. Add Cash Register Endpoints to `remoteApi.ts`
+
+In your `remoteApi.ts`, add:
+
+```typescript
+getRemoteCashRegisters: builder.query<
+  unknown,
+  {
+    page?: number;
+    limit?: number;
+    storeId?: string;
+    status?: string;
+  }
+>({
+  query: (params) => ({
+    url: "/tenant/cash-registers/",
+    params,
+  }),
+  providesTags: (result) =>
+    result
+      ? (Array.isArray(result.cashRegisters) || Array.isArray(result.data)
+          ? (result.cashRegisters || result.data || []).map((c: any) => ({
+              type: "CashRegisters" as const,
+              id: c.id,
+            }))
+          : []
+        ).concat({ type: "CashRegisters", id: "LIST" })
+      : [{ type: "CashRegisters", id: "LIST" }],
+}),
+```
+
+And the CRUD mutations (if needed for offline creation/update):
+
+```typescript
+createRemoteCashRegister: builder.mutation<
+  unknown,
+  {
+    storeId: string;
+    name: string;
+    status?: string;
+  }
+>({
+  query: (body) => ({
+    url: "/tenant/cash-registers/",
+    method: "POST",
+    body,
+  }),
+  invalidatesTags: [{ type: "CashRegisters", id: "LIST" }],
+}),
+
+updateRemoteCashRegister: builder.mutation<
+  unknown,
+  { id: string; name?: string; status?: string }
+>({
+  query: ({ id, ...body }) => ({
+    url: `/tenant/cash-registers/${id}`,
+    method: "PUT",
+    body,
+  }),
+  invalidatesTags: (result, error, { id }) => [{ type: "CashRegisters", id }],
+}),
+
+deleteRemoteCashRegister: builder.mutation<unknown, string>({
+  query: (id) => ({
+    url: `/tenant/cash-registers/${id}`,
+    method: "DELETE",
+  }),
+  invalidatesTags: (result, error, id) => [{ type: "CashRegisters", id }],
+}),
+```
+
+---
+
+### 6. Add Offline CRUD to `localApi.ts`
+
+In your `localApi.ts`, add queries and mutations for cash registers:
+
+```typescript
+getLocalCashRegisters: builder.query<
+  any[],
+  { storeId?: string; isActive?: boolean }
+>({
+  async queryFn({ storeId } = {}) {
+    try {
+      const registers = await getLocalCashRegisters(storeId);
+      return { data: registers };
+    } catch (error) {
+      return { error: { message: (error as Error).message } };
+    }
+  },
+  providesTags: ["LocalCashRegisters"],
+}),
+
+getLocalCashRegisterById: builder.query<any, string>({
+  async queryFn(id) {
+    try {
+      const register = await getLocalCashRegisterById(id);
+      return { data: register };
+    } catch (error) {
+      return { error: { message: (error as Error).message } };
+    }
+  },
+  providesTags: (result, error, id) => [{ type: "LocalCashRegisters", id }],
+}),
+
+createLocalCashRegister: builder.mutation<
+  any,
+  { storeId: string; name: string; status?: string }
+>({
+  async queryFn(payload) {
+    try {
+      const { createOfflineGenericRecord } = await import(
+        "@/services/offline/repository"
+      );
+      const result = await createOfflineGenericRecord(
+        "cash_registers",
+        "/api/tenant/cash-registers",
+        payload,
+      );
+      return { data: result };
+    } catch (error) {
+      return { error: { message: (error as Error).message } };
+    }
+  },
+  invalidatesTags: ["LocalCashRegisters"],
+}),
+
+updateLocalCashRegister: builder.mutation<
+  any,
+  { id: string; name?: string; status?: string }
+>({
+  async queryFn({ id, ...payload }) {
+    try {
+      const { updateOfflineGenericRecord } = await import(
+        "@/services/offline/repository"
+      );
+      const result = await updateOfflineGenericRecord(
+        "cash_registers",
+        `/api/tenant/cash-registers/${id}`,
+        id,
+        payload,
+      );
+      return { data: result };
+    } catch (error) {
+      return { error: { message: (error as Error).message } };
+    }
+  },
+  invalidatesTags: (result, error, { id }) => [
+    { type: "LocalCashRegisters", id },
+  ],
+}),
+
+deleteLocalCashRegister: builder.mutation<any, string>({
+  async queryFn(id) {
+    try {
+      const { deleteOfflineGenericRecord } = await import(
+        "@/services/offline/repository"
+      );
+      await deleteOfflineGenericRecord(
+        "cash_registers",
+        `/api/tenant/cash-registers/${id}`,
+        id,
+      );
+      return { data: { success: true } };
+    } catch (error) {
+      return { error: { message: (error as Error).message } };
+    }
+  },
+  invalidatesTags: (result, error, id) => [
+    { type: "LocalCashRegisters", id },
+    "LocalCashRegisters",
+  ],
+}),
+```
+
+Also add `"LocalCashRegisters"` to `tagTypes` of `localApi`.
+
+---
+
+### 7. Update `processOutboxItem` for `cash_registers`
+
+In `syncManager.ts`, add a case for `"cash_registers"`:
+
+```typescript
+case "cash_registers": {
+  try {
+    if (item.operation === "create") {
+      const { data, error } = await store.dispatch(
+        remoteApi.endpoints.createRemoteCashRegister.initiate(payload),
+      );
+      if (error) throw new Error(JSON.stringify(error));
+      await db
+        .update(cashRegisters)
+        .set({ remoteId: data.id, syncStatus: "synced" })
+        .where(eq(cashRegisters.id, item.entityId));
+    } else if (item.operation === "update") {
+      const { error } = await store.dispatch(
+        remoteApi.endpoints.updateRemoteCashRegister.initiate({
+          id: item.entityId,
+          ...payload,
+        }),
+      );
+      if (error) throw new Error(JSON.stringify(error));
+      await db
+        .update(cashRegisters)
+        .set({ syncStatus: "synced" })
+        .where(eq(cashRegisters.id, item.entityId));
+    } else if (item.operation === "delete") {
+      const { error } = await store.dispatch(
+        remoteApi.endpoints.deleteRemoteCashRegister.initiate(item.entityId),
+      );
+      if (error) throw new Error(JSON.stringify(error));
+      await db.delete(cashRegisters).where(eq(cashRegisters.id, item.entityId));
+    }
+    await markOutboxSynced(item.id);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+```
+
+---
+
+### 8. Add Cash Register Management UI (optional)
+
+You can now add a cash register management screen under `app/(tabs)/manage.tsx` by extending the modules list with a new entry for `"cash_registers"`.
+
+---
+
+### ✅ Summary of Changes
+
+| File | Changes |
+|------|---------|
+| `schema.ts` | Added `cashRegisters` table, relations, types. |
+| `repository.ts` | Added `upsertCashRegisters`, `getLocalCashRegisters`, `toCashRegister`, and updated imports. |
+| `syncManager.ts` | Added `pullCashRegisters`, added to `syncNow`, added `cash_registers` case to `processOutboxItem`. |
+| `remoteApi.ts` | Added endpoints for cash registers (GET, POST, PUT, DELETE). |
+| `localApi.ts` | Added offline queries/mutations, tag types. |
+
+Now your app has full offline support for cash registers, and you can use `registerId` in sessions and orders without bypassing. 🚀
