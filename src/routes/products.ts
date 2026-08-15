@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
-import { adjustInventory } from "../lib/inventory";
+import { adjustInventory, getProductTotalStock } from "../lib/inventory";
 import { validateStore, requireRoles } from "../lib/security";
 
 function slugify(name: string) {
@@ -63,7 +63,10 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           limit,
           totalPages: Math.ceil(total / limit),
         },
-        products,
+        products: products.map((product: any) => ({
+          ...product,
+          totalStock: getProductTotalStock(product),
+        })),
       };
     },
     {
@@ -108,7 +111,95 @@ export const productRoutes = new Elysia({ prefix: "/products" })
   )
 
   // -------------------------------------------------------------------
-  // 3. GET SINGLE PRODUCT BY ID
+  // 3. ALLOCATE EXISTING PRODUCT STOCK TO VARIANTS
+  // -------------------------------------------------------------------
+  .post(
+    "/:id/stock-allocation",
+    async ({ params: { id }, body, tenantId, role, userId, set }) => {
+      requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await validateStore(body.storeId, tenantId);
+
+      const result = await prisma.$transaction(async (tx: any) => {
+        const product = await tx.product.findFirst({
+          where: { id, tenantId, deletedAt: null },
+          include: { variants: true },
+        });
+        if (!product) throw new Error("Product not found.");
+        if (product.variants.length === 0) {
+          throw new Error("Only products with variants can be allocated.");
+        }
+
+        const requestedIds = body.allocations.map((a) => a.variantId);
+        const productVariantIds = product.variants.map((v: any) => v.id);
+        if (
+          new Set(requestedIds).size !== requestedIds.length ||
+          requestedIds.length !== productVariantIds.length ||
+          requestedIds.some((variantId) => !productVariantIds.includes(variantId))
+        ) {
+          throw new Error("Allocations must contain every product variant exactly once.");
+        }
+        if (body.allocations.some((a) => a.quantity < 0)) {
+          throw new Error("Allocation quantities cannot be negative.");
+        }
+
+        // The legacy product-level row is the only source that may be split.
+        const productStock = await tx.inventory.findFirst({
+          where: { tenantId, storeId: body.storeId, productId: id, variantId: null, lotId: null },
+        });
+        if (!productStock) throw new Error("No unallocated product stock was found.");
+        const totalAllocated = body.allocations.reduce((sum, a) => sum + a.quantity, 0);
+        if (totalAllocated !== productStock.quantity) {
+          throw new Error(`Allocation total must equal the unallocated stock (${productStock.quantity}).`);
+        }
+
+        for (const allocation of body.allocations) {
+          const existingVariantStock = await tx.inventory.findFirst({
+            where: { tenantId, storeId: body.storeId, productId: id, variantId: allocation.variantId, lotId: null },
+          });
+          if (existingVariantStock && existingVariantStock.quantity !== 0) {
+            throw new Error(`Variant ${allocation.variantId} already has allocated stock.`);
+          }
+          if (allocation.quantity > 0) {
+            await adjustInventory(tx, {
+              tenantId,
+              storeId: body.storeId,
+              productId: id,
+              variantId: allocation.variantId,
+              quantityDelta: allocation.quantity,
+              userId,
+              type: "ADJUSTMENT",
+              referenceId: id,
+              referenceType: "VariantStockAllocation",
+              reason: "Manual allocation of legacy product stock to variants.",
+            });
+          } else if (!existingVariantStock) {
+            await tx.inventory.create({
+              data: { tenantId, storeId: body.storeId, productId: id, variantId: allocation.variantId, quantity: 0 },
+            });
+          }
+        }
+
+        await tx.inventory.delete({ where: { id: productStock.id } });
+        return tx.inventory.findMany({
+          where: { tenantId, storeId: body.storeId, productId: id, lotId: null },
+          include: { variant: true },
+          orderBy: { variantId: "asc" },
+        });
+      });
+
+      return { success: true, message: "Product stock allocated to variants.", inventory: result };
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({
+        storeId: t.String({ minLength: 1 }),
+        allocations: t.Array(t.Object({ variantId: t.String(), quantity: t.Integer({ minimum: 0 }) })),
+      }),
+    },
+  )
+
+  // -------------------------------------------------------------------
+  // 4. GET SINGLE PRODUCT BY ID
   // -------------------------------------------------------------------
   .get(
     "/:id",
@@ -131,7 +222,10 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           message: "Product not found or access denied.",
         };
       }
-      return { success: true, product };
+      return {
+        success: true,
+        product: { ...product, totalStock: getProductTotalStock(product) },
+      };
     },
     { params: t.Object({ id: t.String() }) },
   )
@@ -144,22 +238,51 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     async ({ body, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
 
-      // Check existing SKU or barcode
-      const existingProduct = await prisma.product.findFirst({
-        where: {
-          tenantId,
-          deletedAt: null,
-          OR: [
-            { sku: body.sku },
-            ...(body.barcode ? [{ barcode: body.barcode }] : []),
-          ],
-        },
-      });
-      if (existingProduct) {
+      const variants = body.variants ?? [];
+      const optionSkus = variants.map((variant) => variant.sku?.trim()).filter(Boolean) as string[];
+      const optionNames = variants.map((variant) => variant.name.trim().toLowerCase());
+      if (
+        variants.some((variant) => !variant.name.trim() || !variant.sku?.trim()) ||
+        new Set(optionSkus).size !== optionSkus.length ||
+        new Set(optionNames).size !== optionNames.length
+      ) {
         set.status = 400;
         return {
           success: false,
-          message: "Product SKU or Barcode already exists in this tenant.",
+          message: "Each product option needs a unique name and SKU.",
+        };
+      }
+
+      // Product identifiers are optional for a master product with options.
+      // Never pass an undefined SKU to Prisma: `{ sku: undefined }` becomes
+      // an empty filter and can incorrectly match every product.
+      const productIdentifiers = [
+        ...(body.sku?.trim() ? [{ sku: body.sku.trim() }] : []),
+        ...(body.barcode?.trim() ? [{ barcode: body.barcode.trim() }] : []),
+      ];
+      const optionIdentifiers = variants.flatMap((variant) => [
+        ...(variant.sku?.trim() ? [{ sku: variant.sku.trim() }] : []),
+        ...(variant.barcode?.trim() ? [{ barcode: variant.barcode.trim() }] : []),
+      ]);
+      const allIdentifiers = [...productIdentifiers, ...optionIdentifiers];
+
+      const [existingProduct, existingVariant] = await Promise.all([
+        allIdentifiers.length
+          ? prisma.product.findFirst({
+              where: { tenantId, deletedAt: null, OR: allIdentifiers },
+            })
+          : null,
+        allIdentifiers.length
+          ? prisma.productVariant.findFirst({
+              where: { tenantId, OR: allIdentifiers },
+            })
+          : null,
+      ]);
+      if (existingProduct || existingVariant) {
+        set.status = 400;
+        return {
+          success: false,
+          message: "A product or option SKU/barcode already exists in this tenant.",
         };
       }
 
@@ -219,9 +342,9 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             isTaxable: body.isTaxable ?? true,
             isActive: body.isActive ?? true,
             isReturnable: body.isReturnable ?? true,
-            variants: body.variants
+          variants: variants.length > 0
               ? {
-                  create: body.variants.map((v) => ({
+                  create: variants.map((v) => ({
                     tenantId,
                     name: v.name.trim(),
                     sku: v.sku
@@ -247,26 +370,41 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             tenantId,
             productId: product.id,
             oldPrice: 0,
-            newPrice: body.sellingPrice || body.variants?.[0]?.price!,
+            newPrice: body.sellingPrice || variants[0]?.price || 0,
             changedById: userId,
             reason: "Initial product creation",
           },
         });
 
-        // If initial stock is provided
-        if (body.storeId && body.initialStock && body.initialStock > 0) {
-          await adjustInventory(tx, {
-            tenantId,
-            storeId: body.storeId,
-            productId: product.id,
-            quantityDelta: body.initialStock,
-            userId,
-            type: "OPENING_STOCK",
-            referenceId: product.id,
-            referenceType: "Product",
-            reason: "Initial stock on product creation.",
-            variantId: null, // No variant for product-level initial stock
-          });
+        if (body.storeId) {
+          const createdVariants = product.variants;
+          if (createdVariants.length > 0) {
+            const variantStocks = variants.map((v) => v.initialStock ?? 0);
+            if ((body.initialStock ?? 0) > 0 && variantStocks.every((stock) => stock === 0)) {
+              throw new Error("Products with variants require initialStock on each variant; stock cannot be inferred.");
+            }
+            if (variantStocks.reduce((sum, stock) => sum + stock, 0) !== (body.initialStock ?? 0)) {
+              throw new Error("Product initialStock must equal the sum of variant initialStock values.");
+            }
+            for (let index = 0; index < createdVariants.length; index++) {
+              const stock = variantStocks[index] ?? 0;
+              await tx.inventory.create({
+                data: { tenantId, storeId: body.storeId, productId: product.id, variantId: createdVariants[index].id, quantity: stock },
+              });
+              if (stock > 0) {
+                await tx.stockMovement.create({
+                  data: { tenantId, storeId: body.storeId, productId: product.id, variantId: createdVariants[index].id, userId, quantity: stock, previousStock: 0, newStock: stock, type: "OPENING_STOCK", referenceId: product.id, referenceType: "Product", reason: "Initial stock on product creation." },
+                });
+              }
+            }
+          } else {
+            await adjustInventory(tx, {
+              tenantId, storeId: body.storeId, productId: product.id,
+              quantityDelta: body.initialStock ?? 0, userId, type: "OPENING_STOCK",
+              referenceId: product.id, referenceType: "Product",
+              reason: "Initial stock on product creation.", variantId: null,
+            });
+          }
         }
 
         set.status = 201;
@@ -300,7 +438,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         isReturnable: t.Optional(t.Boolean()),
         supplierId: t.Optional(t.String()),
         storeId: t.Optional(t.String()),
-        initialStock: t.Optional(t.Integer()),
+        initialStock: t.Optional(t.Integer({ minimum: 0 })),
         variants: t.Optional(
           t.Array(
             t.Object({
@@ -313,6 +451,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
               isActive: t.Optional(t.Boolean()),
               sku: t.Optional(t.String()),
               barcode: t.Optional(t.String()),
+              initialStock: t.Optional(t.Integer({ minimum: 0 })),
             }),
           ),
         ),

@@ -29,10 +29,40 @@ export const inventoryRoutes = new Elysia({ prefix: "/inventory" })
           take: limit,
         }),
       ]);
+      const productIds = [...new Set(inventory.map((row: any) => row.productId))];
+      const [productsForTotal, scopedRows] = await prisma.$transaction([
+        prisma.product.findMany({
+          where: { tenantId, id: { in: productIds } },
+          select: { id: true, variants: { select: { id: true } } },
+        }),
+        prisma.inventory.findMany({
+          where: {
+            tenantId,
+            productId: { in: productIds },
+            ...(query.storeId ? { storeId: query.storeId as string } : {}),
+            lotId: null,
+          },
+          select: { productId: true, variantId: true, quantity: true },
+        }),
+      ]);
+      const variantProductIds = new Set(
+        productsForTotal.filter((product: any) => product.variants.length > 0).map((product: any) => product.id),
+      );
+      const totalByProduct = new Map<string, number>();
+      for (const row of scopedRows) {
+        const isVariantStock = variantProductIds.has(row.productId);
+        if ((isVariantStock && row.variantId == null) || (!isVariantStock && row.variantId != null)) continue;
+        totalByProduct.set(row.productId, (totalByProduct.get(row.productId) ?? 0) + row.quantity);
+      }
       return {
         success: true,
         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-        inventory,
+        // Each row keeps its own variant quantity. `productTotalStock` is the
+        // parent total for inventory screens and is never copied into quantity.
+        inventory: inventory.map((row: any) => ({
+          ...row,
+          productTotalStock: totalByProduct.get(row.productId) ?? 0,
+        })),
       };
     },
     {

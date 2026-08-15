@@ -12,6 +12,7 @@ import { authRoutes } from "./routes/auth";
 import { tenantRoutes } from "./routes/tenants"; // Platform only
 import { tenantProfileRoutes } from "./routes/tenant-profile"; // NEW
 import { productRoutes } from "./routes/products";
+import { productVariantRoutes } from "./routes/product-variants";
 import { orderRoutes } from "./routes/orders";
 import { storeRoutes } from "./routes/stores";
 import { categoryRoutes } from "./routes/categories";
@@ -104,6 +105,7 @@ const app = new Elysia()
           .use(tenantProfileRoutes)
           // All other tenant‑scoped resources
           .use(productRoutes)
+          .use(productVariantRoutes)
           .use(orderRoutes)
           .use(storeRoutes)
           .use(categoryRoutes)

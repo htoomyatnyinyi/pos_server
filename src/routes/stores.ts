@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
+import { getProductTotalStock } from "../lib/inventory";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 import { requireRoles } from "../lib/security";
 
@@ -271,7 +272,10 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
       return {
         success: true,
         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-        products,
+        products: products.map((product: any) => ({
+          ...product,
+          totalStock: getProductTotalStock(product),
+        })),
       };
     },
     {
@@ -307,7 +311,10 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
         set.status = 404;
         return { success: false, message: "Product not found." };
       }
-      return { success: true, product };
+      return {
+        success: true,
+        product: { ...product, totalStock: getProductTotalStock(product) },
+      };
     },
     { params: t.Object({ id: t.String(), productId: t.String() }) },
   )

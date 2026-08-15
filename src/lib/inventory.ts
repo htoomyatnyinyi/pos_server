@@ -15,6 +15,24 @@ interface AdjustInventoryParams {
 }
 
 /**
+ * Return the stock total shown for a product in the loaded inventory scope.
+ * Variant products are totals of variant rows; they never use a parent row.
+ */
+export function getProductTotalStock(product: any): number {
+  const inventories = (product.inventories ?? []).filter(
+    (inventory: any) => inventory.lotId == null,
+  );
+  if ((product.variants ?? []).length > 0) {
+    return inventories
+      .filter((inventory: any) => inventory.variantId != null)
+      .reduce((total: number, inventory: any) => total + inventory.quantity, 0);
+  }
+  return inventories
+    .filter((inventory: any) => inventory.variantId == null)
+    .reduce((total: number, inventory: any) => total + inventory.quantity, 0);
+}
+
+/**
  * Adjust inventory quantity for a product/variant in a specific store.
  * Creates a StockMovement record and updates the Inventory record atomically.
  * Throws an error if the inventory becomes negative.
@@ -36,13 +54,33 @@ export async function adjustInventory(
     reason,
   } = params;
 
+  // Inventory identity is product-level for products without variants and
+  // variant-level for products that have them. Do not silently create a
+  // product row for a variant product (or attach a variant to another
+  // product).
+  const product = await tx.product.findFirst({
+    where: { id: productId, tenantId, deletedAt: null },
+    select: { id: true, variants: { select: { id: true } } },
+  });
+  if (!product) throw new Error(`Product ${productId} not found.`);
+  if (variantId === null && product.variants.length > 0) {
+    throw new Error(`Variant is required for product ${productId}.`);
+  }
+  if (variantId !== null && !product.variants.some((v: any) => v.id === variantId)) {
+    throw new Error(`Variant ${variantId} does not belong to product ${productId}.`);
+  }
+
   // 1. Find or create the Inventory record
   let inventory = await tx.inventory.findFirst({
     where: {
       tenantId,
       storeId,
       productId,
-      variantId: variantId ?? undefined,
+      // `undefined` means "do not filter" in Prisma.  Always pass the
+      // explicit nullable value so a product row cannot accidentally match
+      // a variant row (or vice versa).
+      variantId: variantId ?? null,
+      lotId: null,
     },
   });
 

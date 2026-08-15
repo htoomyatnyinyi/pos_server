@@ -191,7 +191,7 @@ Content-Type: {{contentType}}
 
 ### Extract storeId
 # @storeId = {{createStore.response.body.store.id}}
-@storeId = cms63mr7000066yleypfe235e
+@storeId = cmsswvvsn0006hiqyl34jkr65
 ### 5.2 List All Stores (Tenant)
 GET {{baseUrl}}/api/tenant/stores
 Authorization: Bearer {{authToken}}
@@ -482,6 +482,10 @@ Content-Type: {{contentType}}
 GET {{baseUrl}}/api/tenant/products?page=1&limit=10&storeId={{storeId}}&categoryId={{categoryId}}
 Authorization: Bearer {{authToken}}
 
+###
+GET {{baseUrl}}/api/tenant/products?page=1&limit=10&storeId={{storeId}}
+Authorization: Bearer {{authToken}}
+
 ### 10.3 Get Product by Barcode
 GET {{baseUrl}}/api/tenant/products/barcode/1234567890123
 Authorization: Bearer {{authToken}}
@@ -511,6 +515,10 @@ Authorization: Bearer {{authToken}}
 
 ### 11.1 Get Inventory (with filters)
 GET {{baseUrl}}/api/tenant/inventory?storeId={{storeId}}&productId={{productId}}
+Authorization: Bearer {{authToken}}
+
+### 11.1 Get Inventory (with filters)
+GET {{baseUrl}}/api/tenant/inventory?storeId={{storeId}}
 Authorization: Bearer {{authToken}}
 
 ### 11.2 List Stock Movements

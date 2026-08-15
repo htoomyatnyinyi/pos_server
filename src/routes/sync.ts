@@ -99,7 +99,6 @@ export const syncRoutes = new Elysia({ prefix: "/sync" })
       const inventory = await prisma.inventory.findMany({
         where: {
           tenantId,
-          deletedAt: null,
           updatedAt: { gt: new Date(since) },
         },
         include: {
