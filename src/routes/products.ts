@@ -88,6 +88,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
   .get(
     "/barcode/:barcode",
     async ({ params: { barcode }, tenantId, set }) => {
+      // 1. Try matching a parent product barcode
       const product = await prisma.product.findFirst({
         where: { tenantId, barcode, deletedAt: null },
         include: {
@@ -95,17 +96,52 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           brand: true,
           supplier: true,
           variants: true,
+          inventories: true,
         },
       });
-      if (!product) {
-        set.status = 404;
+      if (product) {
+        return { success: true, found: true, product, matchedVariant: null };
+      }
+
+      // 2. Try matching a variant barcode
+      const variant = await prisma.productVariant.findFirst({
+        where: { tenantId, barcode },
+        include: {
+          product: {
+            include: {
+              category: true,
+              brand: true,
+              supplier: true,
+              variants: true,
+              inventories: true,
+            },
+          },
+        },
+      });
+      if (variant) {
         return {
-          success: false,
-          found: false,
-          message: "No product found with this barcode.",
+          success: true,
+          found: true,
+          product: variant.product,
+          matchedVariant: {
+            id: variant.id,
+            name: variant.name,
+            sku: variant.sku,
+            barcode: variant.barcode,
+            price: variant.price,
+            costPrice: variant.costPrice,
+            color: variant.color,
+            size: variant.size,
+          },
         };
       }
-      return { success: true, found: true, product };
+
+      set.status = 404;
+      return {
+        success: false,
+        found: false,
+        message: "No product or variant found with this barcode.",
+      };
     },
     { params: t.Object({ barcode: t.String() }) },
   )
@@ -459,8 +495,9 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     },
   )
 
+
   // -------------------------------------------------------------------
-  // 5. UPDATE PRODUCT (with price history tracking)
+  // 5. UPDATE PRODUCT (with price history tracking and variant sync)
   // -------------------------------------------------------------------
   .put(
     "/:id",
@@ -469,13 +506,14 @@ export const productRoutes = new Elysia({ prefix: "/products" })
 
       const currentProduct = await prisma.product.findFirst({
         where: { id, tenantId, deletedAt: null },
+        include: { variants: true },
       });
       if (!currentProduct) {
         set.status = 404;
         return { success: false, message: "Product not found." };
       }
 
-      // Check duplicate SKU/barcode
+      // Check duplicate SKU/barcode at the product level
       if (body.sku || body.barcode) {
         const duplicateCheck = await prisma.product.findFirst({
           where: {
@@ -565,10 +603,74 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           },
         });
 
+        // ── Sync variants if provided ──
+        if (Array.isArray(body.variants)) {
+          const incomingVariants = body.variants;
+          const existingVariants = (currentProduct as any).variants ?? [];
+          const existingIds = existingVariants.map((v: any) => v.id);
+
+          const keptIds = new Set<string>();
+
+          for (const v of incomingVariants) {
+            const targetId = v.remoteId || v.id;
+            if (targetId && existingIds.includes(targetId)) {
+              // Update existing variant
+              keptIds.add(targetId);
+              await tx.productVariant.update({
+                where: { id: targetId },
+                data: {
+                  name: v.name?.trim(),
+                  sku: v.sku?.trim(),
+                  barcode: v.barcode?.trim() || null,
+                  price: v.price,
+                  costPrice: v.costPrice,
+                  color: v.color,
+                  size: v.size,
+                  weight: v.weight,
+                  isActive: v.isActive ?? true,
+                },
+              });
+            } else {
+              // Create new variant
+              const created = await tx.productVariant.create({
+                data: {
+                  tenantId,
+                  productId: id,
+                  name: v.name.trim(),
+                  sku: v.sku?.trim() || `${updatedProduct.sku}-${slugify(v.name)}`,
+                  barcode: v.barcode?.trim() || null,
+                  price: v.price ?? updatedProduct.sellingPrice,
+                  costPrice: v.costPrice ?? updatedProduct.costPrice,
+                  color: v.color,
+                  size: v.size,
+                  weight: v.weight,
+                  isActive: v.isActive ?? true,
+                },
+              });
+              keptIds.add(created.id);
+            }
+          }
+
+          // Deactivate variants that were removed
+          const removedIds = existingIds.filter((eid: string) => !keptIds.has(eid));
+          if (removedIds.length > 0) {
+            await tx.productVariant.updateMany({
+              where: { id: { in: removedIds } },
+              data: { isActive: false },
+            });
+          }
+        }
+
+        // Re-fetch with variants included
+        const final = await tx.product.findFirst({
+          where: { id },
+          include: { variants: true, category: true, brand: true },
+        });
+
         return {
           success: true,
           message: "Product updated successfully.",
-          product: updatedProduct,
+          product: final,
         };
       });
     },
@@ -596,6 +698,23 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           isReturnable: t.Optional(t.Boolean()),
           supplierId: t.Optional(t.String()),
           isActive: t.Optional(t.Boolean()),
+          variants: t.Optional(
+            t.Array(
+              t.Object({
+                id: t.Optional(t.String()),
+                remoteId: t.Optional(t.String()),
+                name: t.String(),
+                sku: t.Optional(t.String()),
+                barcode: t.Optional(t.String()),
+                price: t.Optional(t.Number()),
+                costPrice: t.Optional(t.Number()),
+                color: t.Optional(t.String()),
+                size: t.Optional(t.String()),
+                weight: t.Optional(t.Number()),
+                isActive: t.Optional(t.Boolean()),
+              }),
+            ),
+          ),
         }),
       ),
     },
