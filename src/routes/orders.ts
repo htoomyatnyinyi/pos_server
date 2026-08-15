@@ -85,6 +85,17 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
       // Validate store
       await validateStore(body.storeId, tenantId);
 
+      // ─── 0. IDEMPOTENCY CHECK ─────────────────────────────────────
+      if (body.orderNumber) {
+        const existingOrder = await prisma.order.findFirst({
+          where: { tenantId, orderNumber: body.orderNumber, deletedAt: null },
+          include: { items: true },
+        });
+        if (existingOrder) {
+          return { success: true, message: "Order already synced.", order: existingOrder };
+        }
+      }
+
       // ─── 1. BYPASS / SAFE SESSION RESOLUTION ─────────────────────
       let activeSessionId = body.sessionId;
       if (activeSessionId) {
@@ -119,11 +130,12 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
 
       // Fallback: Resolve or create "default-register" via upsert
       if (!registerId) {
+        const defaultRegisterId = `default-register-${body.storeId}`;
         const defaultReg = await prisma.cashRegister.upsert({
-          where: { id: "default-register" },
+          where: { id: defaultRegisterId },
           update: { status: "OPEN" },
           create: {
-            id: "default-register",
+            id: defaultRegisterId,
             tenantId,
             storeId: body.storeId,
             name: "Default POS Register",
@@ -168,7 +180,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
         }
       }
 
-      const orderNumber = `ORD-${Date.now()}`;
+      const orderNumber = body.orderNumber ?? `ORD-${Date.now()}`;
 
       const createdOrder = await prisma.$transaction(async (tx: any) => {
         const order = await tx.order.create({
@@ -266,6 +278,8 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
         paymentMethod: t.String(),
         paidAmount: t.Number(),
         changeAmount: t.Number(),
+        orderNumber: t.Optional(t.String()),
+        clientOrderId: t.Optional(t.String()),
         customerId: t.Optional(t.String()),
         sessionId: t.Optional(t.String()),
         storeId: t.String(),
