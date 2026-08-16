@@ -170,9 +170,13 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         if (
           new Set(requestedIds).size !== requestedIds.length ||
           requestedIds.length !== productVariantIds.length ||
-          requestedIds.some((variantId) => !productVariantIds.includes(variantId))
+          requestedIds.some(
+            (variantId) => !productVariantIds.includes(variantId),
+          )
         ) {
-          throw new Error("Allocations must contain every product variant exactly once.");
+          throw new Error(
+            "Allocations must contain every product variant exactly once.",
+          );
         }
         if (body.allocations.some((a) => a.quantity < 0)) {
           throw new Error("Allocation quantities cannot be negative.");
@@ -180,20 +184,40 @@ export const productRoutes = new Elysia({ prefix: "/products" })
 
         // The legacy product-level row is the only source that may be split.
         const productStock = await tx.inventory.findFirst({
-          where: { tenantId, storeId: body.storeId, productId: id, variantId: null, lotId: null },
+          where: {
+            tenantId,
+            storeId: body.storeId,
+            productId: id,
+            variantId: null,
+            lotId: null,
+          },
         });
-        if (!productStock) throw new Error("No unallocated product stock was found.");
-        const totalAllocated = body.allocations.reduce((sum, a) => sum + a.quantity, 0);
+        if (!productStock)
+          throw new Error("No unallocated product stock was found.");
+        const totalAllocated = body.allocations.reduce(
+          (sum, a) => sum + a.quantity,
+          0,
+        );
         if (totalAllocated !== productStock.quantity) {
-          throw new Error(`Allocation total must equal the unallocated stock (${productStock.quantity}).`);
+          throw new Error(
+            `Allocation total must equal the unallocated stock (${productStock.quantity}).`,
+          );
         }
 
         for (const allocation of body.allocations) {
           const existingVariantStock = await tx.inventory.findFirst({
-            where: { tenantId, storeId: body.storeId, productId: id, variantId: allocation.variantId, lotId: null },
+            where: {
+              tenantId,
+              storeId: body.storeId,
+              productId: id,
+              variantId: allocation.variantId,
+              lotId: null,
+            },
           });
           if (existingVariantStock && existingVariantStock.quantity !== 0) {
-            throw new Error(`Variant ${allocation.variantId} already has allocated stock.`);
+            throw new Error(
+              `Variant ${allocation.variantId} already has allocated stock.`,
+            );
           }
           if (allocation.quantity > 0) {
             await adjustInventory(tx, {
@@ -210,26 +234,46 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             });
           } else if (!existingVariantStock) {
             await tx.inventory.create({
-              data: { tenantId, storeId: body.storeId, productId: id, variantId: allocation.variantId, quantity: 0 },
+              data: {
+                tenantId,
+                storeId: body.storeId,
+                productId: id,
+                variantId: allocation.variantId,
+                quantity: 0,
+              },
             });
           }
         }
 
         await tx.inventory.delete({ where: { id: productStock.id } });
         return tx.inventory.findMany({
-          where: { tenantId, storeId: body.storeId, productId: id, lotId: null },
+          where: {
+            tenantId,
+            storeId: body.storeId,
+            productId: id,
+            lotId: null,
+          },
           include: { variant: true },
           orderBy: { variantId: "asc" },
         });
       });
 
-      return { success: true, message: "Product stock allocated to variants.", inventory: result };
+      return {
+        success: true,
+        message: "Product stock allocated to variants.",
+        inventory: result,
+      };
     },
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({
         storeId: t.String({ minLength: 1 }),
-        allocations: t.Array(t.Object({ variantId: t.String(), quantity: t.Integer({ minimum: 0 }) })),
+        allocations: t.Array(
+          t.Object({
+            variantId: t.String(),
+            quantity: t.Integer({ minimum: 0 }),
+          }),
+        ),
       }),
     },
   )
@@ -275,10 +319,16 @@ export const productRoutes = new Elysia({ prefix: "/products" })
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
 
       const variants = body.variants ?? [];
-      const optionSkus = variants.map((variant) => variant.sku?.trim()).filter(Boolean) as string[];
-      const optionNames = variants.map((variant) => variant.name.trim().toLowerCase());
+      const optionSkus = variants
+        .map((variant) => variant.sku?.trim())
+        .filter(Boolean) as string[];
+      const optionNames = variants.map((variant) =>
+        variant.name.trim().toLowerCase(),
+      );
       if (
-        variants.some((variant) => !variant.name.trim() || !variant.sku?.trim()) ||
+        variants.some(
+          (variant) => !variant.name.trim() || !variant.sku?.trim(),
+        ) ||
         new Set(optionSkus).size !== optionSkus.length ||
         new Set(optionNames).size !== optionNames.length
       ) {
@@ -298,7 +348,9 @@ export const productRoutes = new Elysia({ prefix: "/products" })
       ];
       const optionIdentifiers = variants.flatMap((variant) => [
         ...(variant.sku?.trim() ? [{ sku: variant.sku.trim() }] : []),
-        ...(variant.barcode?.trim() ? [{ barcode: variant.barcode.trim() }] : []),
+        ...(variant.barcode?.trim()
+          ? [{ barcode: variant.barcode.trim() }]
+          : []),
       ]);
       const allIdentifiers = [...productIdentifiers, ...optionIdentifiers];
 
@@ -318,7 +370,8 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         set.status = 400;
         return {
           success: false,
-          message: "A product or option SKU/barcode already exists in this tenant.",
+          message:
+            "A product or option SKU/barcode already exists in this tenant.",
         };
       }
 
@@ -378,24 +431,25 @@ export const productRoutes = new Elysia({ prefix: "/products" })
             isTaxable: body.isTaxable ?? true,
             isActive: body.isActive ?? true,
             isReturnable: body.isReturnable ?? true,
-          variants: variants.length > 0
-              ? {
-                  create: variants.map((v) => ({
-                    tenantId,
-                    name: v.name.trim(),
-                    sku: v.sku
-                      ? v.sku.trim()
-                      : `${body.sku?.trim()}-${slugify(v.name)}`,
-                    barcode: v.barcode?.trim() || body.barcode?.trim(),
-                    price: v.price ?? body.sellingPrice,
-                    costPrice: v.costPrice ?? body.costPrice,
-                    color: v.color,
-                    size: v.size,
-                    weight: v.weight,
-                    isActive: v.isActive ?? true,
-                  })),
-                }
-              : undefined,
+            variants:
+              variants.length > 0
+                ? {
+                    create: variants.map((v) => ({
+                      tenantId,
+                      name: v.name.trim(),
+                      sku: v.sku
+                        ? v.sku.trim()
+                        : `${body.sku?.trim()}-${slugify(v.name)}`,
+                      barcode: v.barcode?.trim() || body.barcode?.trim(),
+                      price: v.price ?? body.sellingPrice,
+                      costPrice: v.costPrice ?? body.costPrice,
+                      color: v.color,
+                      size: v.size,
+                      weight: v.weight,
+                      isActive: v.isActive ?? true,
+                    })),
+                  }
+                : undefined,
           },
           include: { variants: true },
         });
@@ -416,29 +470,64 @@ export const productRoutes = new Elysia({ prefix: "/products" })
           const createdVariants = product.variants;
           if (createdVariants.length > 0) {
             const variantStocks = variants.map((v) => v.initialStock ?? 0);
-            if ((body.initialStock ?? 0) > 0 && variantStocks.every((stock) => stock === 0)) {
-              throw new Error("Products with variants require initialStock on each variant; stock cannot be inferred.");
+            if (
+              (body.initialStock ?? 0) > 0 &&
+              variantStocks.every((stock) => stock === 0)
+            ) {
+              throw new Error(
+                "Products with variants require initialStock on each variant; stock cannot be inferred.",
+              );
             }
-            if (variantStocks.reduce((sum, stock) => sum + stock, 0) !== (body.initialStock ?? 0)) {
-              throw new Error("Product initialStock must equal the sum of variant initialStock values.");
+            if (
+              variantStocks.reduce((sum, stock) => sum + stock, 0) !==
+              (body.initialStock ?? 0)
+            ) {
+              throw new Error(
+                "Product initialStock must equal the sum of variant initialStock values.",
+              );
             }
             for (let index = 0; index < createdVariants.length; index++) {
               const stock = variantStocks[index] ?? 0;
               await tx.inventory.create({
-                data: { tenantId, storeId: body.storeId, productId: product.id, variantId: createdVariants[index].id, quantity: stock },
+                data: {
+                  tenantId,
+                  storeId: body.storeId,
+                  productId: product.id,
+                  variantId: createdVariants[index].id,
+                  quantity: stock,
+                },
               });
               if (stock > 0) {
                 await tx.stockMovement.create({
-                  data: { tenantId, storeId: body.storeId, productId: product.id, variantId: createdVariants[index].id, userId, quantity: stock, previousStock: 0, newStock: stock, type: "OPENING_STOCK", referenceId: product.id, referenceType: "Product", reason: "Initial stock on product creation." },
+                  data: {
+                    tenantId,
+                    storeId: body.storeId,
+                    productId: product.id,
+                    variantId: createdVariants[index].id,
+                    userId,
+                    quantity: stock,
+                    previousStock: 0,
+                    newStock: stock,
+                    type: "OPENING_STOCK",
+                    referenceId: product.id,
+                    referenceType: "Product",
+                    reason: "Initial stock on product creation.",
+                  },
                 });
               }
             }
           } else {
             await adjustInventory(tx, {
-              tenantId, storeId: body.storeId, productId: product.id,
-              quantityDelta: body.initialStock ?? 0, userId, type: "OPENING_STOCK",
-              referenceId: product.id, referenceType: "Product",
-              reason: "Initial stock on product creation.", variantId: null,
+              tenantId,
+              storeId: body.storeId,
+              productId: product.id,
+              quantityDelta: body.initialStock ?? 0,
+              userId,
+              type: "OPENING_STOCK",
+              referenceId: product.id,
+              referenceType: "Product",
+              reason: "Initial stock on product creation.",
+              variantId: null,
             });
           }
         }
@@ -495,7 +584,6 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     },
   )
 
-
   // -------------------------------------------------------------------
   // 5. UPDATE PRODUCT (with price history tracking and variant sync)
   // -------------------------------------------------------------------
@@ -535,144 +623,157 @@ export const productRoutes = new Elysia({ prefix: "/products" })
         }
       }
 
-      return await prisma.$transaction(async (tx: any) => {
-        // Resolve category
-        let categoryId = body.categoryId;
-        if (!categoryId && body.categoryName) {
-          const categorySlug = slugify(body.categoryName);
-          let category = await tx.category.findFirst({
-            where: { tenantId, slug: categorySlug, deletedAt: null },
-          });
-          if (!category) {
-            category = await tx.category.create({
+      return await prisma
+        .$transaction(async (tx: any) => {
+          // Resolve category
+          let categoryId = body.categoryId;
+          if (!categoryId && body.categoryName) {
+            const categorySlug = slugify(body.categoryName);
+            let category = await tx.category.findFirst({
+              where: { tenantId, slug: categorySlug, deletedAt: null },
+            });
+            if (!category) {
+              category = await tx.category.create({
+                data: {
+                  tenantId,
+                  name: body.categoryName.trim(),
+                  slug: categorySlug,
+                },
+              });
+            }
+            categoryId = category.id;
+          }
+
+          // Track price changes
+          const sellingChanged =
+            body.sellingPrice !== undefined &&
+            body.sellingPrice !== Number(currentProduct.sellingPrice);
+          if (sellingChanged) {
+            await tx.priceHistory.create({
               data: {
                 tenantId,
-                name: body.categoryName.trim(),
-                slug: categorySlug,
+                productId: id,
+                oldPrice: currentProduct.sellingPrice,
+                newPrice: body.sellingPrice!,
+                changedById: userId,
+                reason: "Product selling price updated.",
               },
             });
           }
-          categoryId = category.id;
-        }
 
-        // Track price changes
-        const sellingChanged =
-          body.sellingPrice !== undefined &&
-          body.sellingPrice !== Number(currentProduct.sellingPrice);
-        if (sellingChanged) {
-          await tx.priceHistory.create({
+          const updatedProduct = await tx.product.update({
+            where: { id },
             data: {
-              tenantId,
-              productId: id,
-              oldPrice: currentProduct.sellingPrice,
-              newPrice: body.sellingPrice!,
-              changedById: userId,
-              reason: "Product selling price updated.",
+              sku: body.sku?.trim(),
+              barcode: body.barcode?.trim(),
+              name: body.name?.trim(),
+              description: body.description,
+              brandId: body.brandId,
+              costPrice: body.costPrice,
+              sellingPrice: body.sellingPrice,
+              wholesalePrice: body.wholesalePrice,
+              categoryId: categoryId ?? undefined,
+              supplierId: body.supplierId,
+              manufacturingDate: body.manufacturingDate
+                ? new Date(body.manufacturingDate)
+                : undefined,
+              expiryDate: body.expiryDate
+                ? new Date(body.expiryDate)
+                : undefined,
+              bestBeforeDate: body.bestBeforeDate
+                ? new Date(body.bestBeforeDate)
+                : undefined,
+              promoPrice: body.promoPrice,
+              promoStartAt: body.promoStartAt
+                ? new Date(body.promoStartAt)
+                : undefined,
+              promoEndAt: body.promoEndAt
+                ? new Date(body.promoEndAt)
+                : undefined,
+              isTaxable: body.isTaxable,
+              isActive: body.isActive,
+              isReturnable: body.isReturnable,
             },
           });
-        }
 
-        const updatedProduct = await tx.product.update({
-          where: { id },
-          data: {
-            sku: body.sku?.trim(),
-            barcode: body.barcode?.trim(),
-            name: body.name?.trim(),
-            description: body.description,
-            brandId: body.brandId,
-            costPrice: body.costPrice,
-            sellingPrice: body.sellingPrice,
-            wholesalePrice: body.wholesalePrice,
-            categoryId: categoryId ?? undefined,
-            supplierId: body.supplierId,
-            manufacturingDate: body.manufacturingDate
-              ? new Date(body.manufacturingDate)
-              : undefined,
-            expiryDate: body.expiryDate ? new Date(body.expiryDate) : undefined,
-            bestBeforeDate: body.bestBeforeDate
-              ? new Date(body.bestBeforeDate)
-              : undefined,
-            promoPrice: body.promoPrice,
-            promoStartAt: body.promoStartAt
-              ? new Date(body.promoStartAt)
-              : undefined,
-            promoEndAt: body.promoEndAt ? new Date(body.promoEndAt) : undefined,
-            isTaxable: body.isTaxable,
-            isActive: body.isActive,
-            isReturnable: body.isReturnable,
-          },
-        });
+          // ── Sync variants if provided ──
+          if (Array.isArray(body.variants)) {
+            const incomingVariants = body.variants;
+            const existingVariants = (currentProduct as any).variants ?? [];
+            const existingIds = existingVariants.map((v: any) => v.id);
 
-        // ── Sync variants if provided ──
-        if (Array.isArray(body.variants)) {
-          const incomingVariants = body.variants;
-          const existingVariants = (currentProduct as any).variants ?? [];
-          const existingIds = existingVariants.map((v: any) => v.id);
+            const keptIds = new Set<string>();
 
-          const keptIds = new Set<string>();
+            for (const v of incomingVariants) {
+              const targetId = v.remoteId || v.id;
+              if (targetId && existingIds.includes(targetId)) {
+                // Update existing variant
+                keptIds.add(targetId);
+                await tx.productVariant.update({
+                  where: { id: targetId },
+                  data: {
+                    name: v.name?.trim(),
+                    sku: v.sku?.trim(),
+                    barcode: v.barcode?.trim() || null,
+                    price: v.price,
+                    costPrice: v.costPrice,
+                    color: v.color,
+                    size: v.size,
+                    weight: v.weight,
+                    isActive: v.isActive ?? true,
+                  },
+                });
+              } else {
+                // Create new variant
+                const created = await tx.productVariant.create({
+                  data: {
+                    tenantId,
+                    productId: id,
+                    name: v.name.trim(),
+                    sku:
+                      v.sku?.trim() ||
+                      `${updatedProduct.sku}-${slugify(v.name)}`,
+                    barcode: v.barcode?.trim() || null,
+                    price: v.price ?? updatedProduct.sellingPrice,
+                    costPrice: v.costPrice ?? updatedProduct.costPrice,
+                    color: v.color,
+                    size: v.size,
+                    weight: v.weight,
+                    isActive: v.isActive ?? true,
+                  },
+                });
+                keptIds.add(created.id);
+              }
+            }
 
-          for (const v of incomingVariants) {
-            const targetId = v.remoteId || v.id;
-            if (targetId && existingIds.includes(targetId)) {
-              // Update existing variant
-              keptIds.add(targetId);
-              await tx.productVariant.update({
-                where: { id: targetId },
-                data: {
-                  name: v.name?.trim(),
-                  sku: v.sku?.trim(),
-                  barcode: v.barcode?.trim() || null,
-                  price: v.price,
-                  costPrice: v.costPrice,
-                  color: v.color,
-                  size: v.size,
-                  weight: v.weight,
-                  isActive: v.isActive ?? true,
-                },
+            // Deactivate variants that were removed
+            const removedIds = existingIds.filter(
+              (eid: string) => !keptIds.has(eid),
+            );
+            if (removedIds.length > 0) {
+              await tx.productVariant.updateMany({
+                where: { id: { in: removedIds } },
+                data: { isActive: false },
               });
-            } else {
-              // Create new variant
-              const created = await tx.productVariant.create({
-                data: {
-                  tenantId,
-                  productId: id,
-                  name: v.name.trim(),
-                  sku: v.sku?.trim() || `${updatedProduct.sku}-${slugify(v.name)}`,
-                  barcode: v.barcode?.trim() || null,
-                  price: v.price ?? updatedProduct.sellingPrice,
-                  costPrice: v.costPrice ?? updatedProduct.costPrice,
-                  color: v.color,
-                  size: v.size,
-                  weight: v.weight,
-                  isActive: v.isActive ?? true,
-                },
-              });
-              keptIds.add(created.id);
             }
           }
 
-          // Deactivate variants that were removed
-          const removedIds = existingIds.filter((eid: string) => !keptIds.has(eid));
-          if (removedIds.length > 0) {
-            await tx.productVariant.updateMany({
-              where: { id: { in: removedIds } },
-              data: { isActive: false },
-            });
-          }
-        }
+          // Re-fetch with variants included
+          const final = await tx.product.findFirst({
+            where: { id },
+            include: { variants: true, category: true, brand: true },
+          });
 
-        // Re-fetch with variants included
-        const final = await tx.product.findFirst({
-          where: { id },
-          include: { variants: true, category: true, brand: true },
+          return {
+            success: true,
+            message: "Product updated successfully.",
+            product: final,
+          };
+        })
+        .catch((error: any) => {
+          console.error("❌ Error updating product:", error);
+          throw error;
         });
-
-        return {
-          success: true,
-          message: "Product updated successfully.",
-          product: final,
-        };
-      });
     },
     {
       params: t.Object({ id: t.String() }),
