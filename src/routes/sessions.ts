@@ -132,12 +132,11 @@ export const sessionRoutes = new Elysia({ prefix: "/sessions" })
         },
       });
       if (existingActiveSession) {
-        set.status = 400;
+        set.status = 200;
         return {
-          success: false,
-          message:
-            "You already have an active session open. Please close it first.",
-          sessionId: existingActiveSession.id,
+          success: true,
+          message: "Resumed existing active session.",
+          session: existingActiveSession,
         };
       }
 
