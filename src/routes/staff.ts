@@ -16,12 +16,40 @@ const staffSelect = {
   lastLoginAt: true,
   createdAt: true,
   userPermissions: { select: { permission: true } },
+  stores: {
+    select: {
+      storeId: true,
+      isPrimary: true,
+      store: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+    },
+  },
 } as const;
 
 function mapStaff(user: any) {
   if (!user) return null;
+  const primaryUserStore =
+    user.stores?.find((s: any) => s.isPrimary) || user.stores?.[0];
+  const primaryStore = primaryUserStore?.store;
+  const storeId = primaryUserStore?.storeId || primaryStore?.id;
+
   return {
     ...user,
+    storeId: storeId || undefined,
+    storeName: primaryStore?.name || undefined,
+    stores: user.stores
+      ? user.stores.map((s: any) => ({
+          id: s.store?.id || s.storeId,
+          name: s.store?.name,
+          code: s.store?.code,
+          isPrimary: s.isPrimary,
+        }))
+      : [],
     permissions: user.userPermissions
       ? user.userPermissions.map((p: any) => p.permission)
       : [],
@@ -232,12 +260,38 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
         };
       }
 
+      if (updateData.storeId !== undefined) {
+        if (updateData.storeId) {
+          await validateStore(updateData.storeId, tenantId);
+        }
+      }
+
       const updatedStaff = await prisma.$transaction(async (tx: any) => {
         const updated = await tx.user.update({
           where: { id },
           data,
           select: staffSelect,
         });
+
+        if (updateData.storeId !== undefined) {
+          await tx.userStore.deleteMany({ where: { userId: id } });
+          if (updateData.storeId) {
+            await tx.userStore.create({
+              data: {
+                userId: id,
+                storeId: updateData.storeId,
+                isPrimary: true,
+              },
+            });
+          }
+        }
+
+        // Re-fetch staff with updated stores for audit log and return
+        const freshStaff = await tx.user.findUnique({
+          where: { id },
+          select: staffSelect,
+        });
+
         await tx.auditLog.create({
           data: {
             tenantId,
@@ -246,10 +300,10 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
             entity: "User",
             entityId: id,
             oldData: JSON.parse(JSON.stringify(mapStaff(currentStaff))),
-            newData: JSON.parse(JSON.stringify(mapStaff(updated))),
+            newData: JSON.parse(JSON.stringify(mapStaff(freshStaff || updated))),
           },
         });
-        return updated;
+        return freshStaff || updated;
       });
 
       return {
@@ -269,6 +323,7 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
           role: t.Optional(t.String()),
           permissions: t.Optional(t.Array(t.String())),
           isActive: t.Optional(t.Boolean()),
+          storeId: t.Optional(t.String()),
         }),
       ),
     },
