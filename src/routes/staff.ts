@@ -3,7 +3,7 @@ import { Permission, Prisma, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
-import { validateStore, validateUser, requireRoles } from "../lib/security";
+import { validateStore, validateUser, requireDelegatedPermissions, requirePermission, requireRoles } from "../lib/security";
 
 const staffSelect = {
   id: true,
@@ -131,6 +131,8 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
     "/",
     async ({ body, tenantId, userId: currentOperatorId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(currentOperatorId, role, "MANAGE_STAFF", set);
+      await requireDelegatedPermissions(currentOperatorId, role, body.permissions, set);
 
       const emailLower = body.email.toLowerCase().trim();
       const usernameLower = body.username.toLowerCase().trim();
@@ -225,6 +227,8 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
       set,
     }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(currentOperatorId, role, "MANAGE_STAFF", set);
+      await requireDelegatedPermissions(currentOperatorId, role, body.permissions, set);
 
       const currentStaff = await prisma.user.findFirst({
         where: { id, tenantId, deletedAt: null },
@@ -339,6 +343,7 @@ export const staffRoutes = new Elysia({ prefix: "/staff" })
       set,
     }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(currentOperatorId, role, "MANAGE_STAFF", set);
 
       if (id === currentOperatorId) {
         set.status = 400;

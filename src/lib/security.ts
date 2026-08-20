@@ -1,5 +1,18 @@
 import { prisma } from "./prisma";
 
+export type AppPermission =
+  | "VIEW_REPORTS"
+  | "EDIT_PRICES"
+  | "VOID_ORDERS"
+  | "MANAGE_STAFF"
+  | "MANAGE_INVENTORY"
+  | "REFUND_ORDERS"
+  | "VIEW_AUDIT_LOGS"
+  | "MANAGE_PROMOTIONS"
+  | "VIEW_ANALYTICS"
+  | "MANAGE_API_KEYS"
+  | "MANAGE_WEBHOOKS";
+
 /**
  * Validate that a store belongs to the given tenant.
  * Throws an error with a user‑friendly message if not found.
@@ -44,6 +57,60 @@ export function requireRoles(role: string, allowedRoles: string[], set: any) {
   if (!isAllowedRole(role, allowedRoles)) {
     set.status = 403;
     throw new Error("Forbidden: Insufficient privileges.");
+  }
+}
+
+export async function hasPermission(
+  userId: string,
+  role: string,
+  permission: AppPermission,
+) {
+  if (role === "ADMIN" || role === "SUPER_ADMIN") return true;
+  const assigned = await prisma.userPermission.findMany({
+    where: { userId },
+    select: { permission: true },
+  });
+  const permissions = assigned.map((entry) => String(entry.permission));
+  return permissions.includes(permission);
+}
+
+export async function requirePermission(
+  userId: string,
+  role: string,
+  permission: AppPermission,
+  set: any,
+) {
+  if (!(await hasPermission(userId, role, permission))) {
+    set.status = 403;
+    throw new Error(`Forbidden: Missing permission ${permission}.`);
+  }
+}
+
+export async function requireAnyPermission(
+  userId: string,
+  role: string,
+  permissions: AppPermission[],
+  set: any,
+) {
+  for (const permission of permissions) {
+    if (await hasPermission(userId, role, permission)) return;
+  }
+  set.status = 403;
+  throw new Error(`Forbidden: Missing one of: ${permissions.join(", ")}.`);
+}
+
+export async function requireDelegatedPermissions(
+  userId: string,
+  role: string,
+  permissions: string[] | undefined,
+  set: any,
+) {
+  if (!permissions || role === "ADMIN" || role === "SUPER_ADMIN") return;
+  for (const permission of permissions) {
+    if (!(await hasPermission(userId, role, permission as AppPermission))) {
+      set.status = 403;
+      throw new Error(`Forbidden: You cannot grant ${permission}.`);
+    }
   }
 }
 

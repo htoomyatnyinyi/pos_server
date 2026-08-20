@@ -3,7 +3,7 @@ import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 import { adjustInventory } from "../lib/inventory";
 import { OrderStatus, PaymentMethod, PaymentStatus } from "@prisma/client";
-import { validateStore, requireRoles } from "../lib/security";
+import { validateStore, requirePermission, requireRoles } from "../lib/security";
 
 export const orderRoutes = new Elysia({ prefix: "/orders" })
   .use(tenantAuthMiddleware)
@@ -346,7 +346,17 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
   .patch(
     "/:id/status",
     async ({ params: { id }, body, tenantId, userId, role, set }) => {
-      requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      if (body.status === "COMPLETED") {
+        requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
+      } else {
+        requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+        await requirePermission(
+          userId,
+          role,
+          body.status === "CANCELLED" ? "REFUND_ORDERS" : "VOID_ORDERS",
+          set,
+        );
+      }
       const order = await prisma.order.findFirst({
         where: { id, tenantId },
       });
@@ -386,6 +396,7 @@ export const orderRoutes = new Elysia({ prefix: "/orders" })
     "/:id",
     async ({ params: { id }, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "VOID_ORDERS", set);
       const order = await prisma.order.findFirst({
         where: { id, tenantId },
         include: { items: true },

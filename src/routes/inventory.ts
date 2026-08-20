@@ -3,7 +3,7 @@ import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 import { adjustInventory } from "../lib/inventory";
 import { MovementType } from "@prisma/client";
-import { validateStore, requireRoles } from "../lib/security";
+import { validateStore, requirePermission, requireRoles } from "../lib/security";
 
 export const inventoryRoutes = new Elysia({ prefix: "/inventory" })
   .use(tenantAuthMiddleware)
@@ -126,6 +126,7 @@ export const inventoryRoutes = new Elysia({ prefix: "/inventory" })
         "/",
         async ({ body, tenantId, userId, role, set }) => {
           requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+          await requirePermission(userId, role, "MANAGE_INVENTORY", set);
           if (!body.storeId) {
             set.status = 400;
             return { success: false, message: "storeId is required" };
@@ -216,6 +217,7 @@ export const inventoryRoutes = new Elysia({ prefix: "/inventory" })
         "/",
         async ({ body, tenantId, userId, role, set }) => {
           requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+          await requirePermission(userId, role, "MANAGE_INVENTORY", set);
           if (!body.storeId) {
             set.status = 400;
             return {

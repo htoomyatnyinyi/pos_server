@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { getProductTotalStock } from "../lib/inventory";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
-import { requireRoles } from "../lib/security";
+import { requirePermission, requireRoles } from "../lib/security";
 
 export const storeRoutes = new Elysia({ prefix: "/stores" })
   .use(tenantAuthMiddleware)
@@ -14,6 +14,7 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
     "/",
     async ({ body, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_STAFF", set);
 
       // Subscription limit check
       const subscription = await prisma.tenantSubscription.findFirst({
@@ -117,8 +118,9 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
   // -------------------------------------------------------------------
   .put(
     "/:id",
-    async ({ params: { id }, body, tenantId, role, set }) => {
+    async ({ params: { id }, body, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_STAFF", set);
 
       const store = await prisma.store.findFirst({
         where: { id, tenantId, deletedAt: null },
@@ -166,8 +168,9 @@ export const storeRoutes = new Elysia({ prefix: "/stores" })
   // -------------------------------------------------------------------
   .delete(
     "/:id",
-    async ({ params: { id }, tenantId, role, set }) => {
+    async ({ params: { id }, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_STAFF", set);
 
       const store = await prisma.store.findFirst({
         where: { id, tenantId, deletedAt: null },

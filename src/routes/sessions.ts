@@ -105,7 +105,8 @@ export const sessionRoutes = new Elysia({ prefix: "/sessions" })
 
   .post(
     "/open",
-    async ({ body, tenantId, userId, set }) => {
+    async ({ body, tenantId, userId, role, set }) => {
+      requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
       let storeId = body.storeId;
       if (!storeId) {
         const userWithStores = await prisma.user.findUnique({
@@ -186,7 +187,8 @@ export const sessionRoutes = new Elysia({ prefix: "/sessions" })
 
   .post(
     "/:id/close",
-    async ({ params: { id }, body, tenantId, userId, set }) => {
+    async ({ params: { id }, body, tenantId, userId, role, set }) => {
+      requireRoles(role, ["ADMIN", "MANAGER", "CASHIER", "SUPER_ADMIN"], set);
       const currentSession = await prisma.session.findFirst({
         where: { id, tenantId, status: "OPEN" },
       });

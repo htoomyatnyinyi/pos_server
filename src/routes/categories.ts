@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
-import { requireRoles } from "../lib/security";
+import { requirePermission, requireRoles } from "../lib/security";
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/\s+/g, "-");
@@ -80,6 +80,7 @@ export const categoryRoutes = new Elysia({ prefix: "/categories" })
     "/",
     async ({ body, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const generatedSlug = body.slug || slugify(body.name);
       const existingSlug = await prisma.category.findFirst({
@@ -149,6 +150,7 @@ export const categoryRoutes = new Elysia({ prefix: "/categories" })
     "/:id",
     async ({ params: { id }, body, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const category = await prisma.category.findFirst({
         where: { id, tenantId, deletedAt: null },
@@ -244,6 +246,7 @@ export const categoryRoutes = new Elysia({ prefix: "/categories" })
     "/:id",
     async ({ params: { id }, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const category = await prisma.category.findFirst({
         where: { id, tenantId, deletedAt: null },

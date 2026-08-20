@@ -1,7 +1,7 @@
 import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
-import { requireRoles } from "../lib/security";
+import { requirePermission, requireRoles } from "../lib/security";
 
 export const supplierRoutes = new Elysia({ prefix: "/suppliers" })
   .use(tenantAuthMiddleware)
@@ -79,6 +79,7 @@ export const supplierRoutes = new Elysia({ prefix: "/suppliers" })
     "/",
     async ({ body, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const generatedCode = body.code
         ? body.code.trim().toUpperCase()
@@ -149,6 +150,7 @@ export const supplierRoutes = new Elysia({ prefix: "/suppliers" })
     "/:id",
     async ({ params: { id }, body, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const current = await prisma.supplier.findFirst({
         where: { id, tenantId, deletedAt: null },
@@ -217,6 +219,7 @@ export const supplierRoutes = new Elysia({ prefix: "/suppliers" })
     "/:id",
     async ({ params: { id }, tenantId, userId, role, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const supplier = await prisma.supplier.findFirst({
         where: { id, tenantId, deletedAt: null },

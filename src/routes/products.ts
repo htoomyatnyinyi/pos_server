@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 import { prisma } from "../lib/prisma";
 import { tenantAuthMiddleware } from "../../middlewares/tenantAuthMiddleware";
 import { adjustInventory, getProductTotalStock } from "../lib/inventory";
-import { validateStore, requireRoles } from "../lib/security";
+import { validateStore, requireAnyPermission, requirePermission, requireRoles } from "../lib/security";
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/\s+/g, "-");
@@ -153,6 +153,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     "/:id/stock-allocation",
     async ({ params: { id }, body, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
       await validateStore(body.storeId, tenantId);
 
       const result = await prisma.$transaction(async (tx: any) => {
@@ -317,6 +318,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     "/",
     async ({ body, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requireAnyPermission(userId, role, ["MANAGE_INVENTORY", "EDIT_PRICES"], set);
 
       const variants = body.variants ?? [];
       const optionSkus = variants
@@ -591,6 +593,7 @@ export const productRoutes = new Elysia({ prefix: "/products" })
     "/:id",
     async ({ params: { id }, body, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requireAnyPermission(userId, role, ["MANAGE_INVENTORY", "EDIT_PRICES"], set);
 
       const currentProduct = await prisma.product.findFirst({
         where: { id, tenantId, deletedAt: null },
@@ -826,8 +829,9 @@ export const productRoutes = new Elysia({ prefix: "/products" })
   // -------------------------------------------------------------------
   .delete(
     "/:id",
-    async ({ params: { id }, tenantId, role, set }) => {
+    async ({ params: { id }, tenantId, role, userId, set }) => {
       requireRoles(role, ["ADMIN", "MANAGER", "SUPER_ADMIN"], set);
+      await requirePermission(userId, role, "MANAGE_INVENTORY", set);
 
       const product = await prisma.product.findFirst({
         where: { id, tenantId, deletedAt: null },
