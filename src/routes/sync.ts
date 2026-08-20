@@ -118,4 +118,37 @@ export const syncRoutes = new Elysia({ prefix: "/sync" })
         since: t.Optional(t.String()),
       }),
     },
+  )
+
+  // Pull stock movements modified after timestamp. This keeps the mobile
+  // movement timeline incremental instead of downloading the full history.
+  .get(
+    "/movements",
+    async ({ tenantId, query }) => {
+      const since = query.since ? parseInt(query.since as string) : 0;
+      const movements = await prisma.stockMovement.findMany({
+        where: {
+          tenantId,
+          createdAt: { gt: new Date(since) },
+          ...(query.storeId ? { storeId: query.storeId as string } : {}),
+        },
+        include: {
+          product: true,
+          variant: true,
+          user: { select: { id: true, name: true } },
+          store: true,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      return movements.map((movement: any) => ({
+        ...movement,
+        lastModified: movement.createdAt.getTime(),
+      }));
+    },
+    {
+      query: t.Object({
+        since: t.Optional(t.String()),
+        storeId: t.Optional(t.String()),
+      }),
+    },
   );

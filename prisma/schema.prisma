@@ -713,6 +713,7 @@ model Product {
   @@index([sku])
   @@index([barcode])
   @@index([tenantId, createdAt])
+  @@index([tenantId, updatedAt])
   @@index([name])
   @@index([brandId])
   lots Lot[]
@@ -779,6 +780,7 @@ model ProductVariant {
   @@index([isActive])
   @@index([tenantId])
   @@index([tenantId, createdAt])
+  @@index([tenantId, updatedAt])
   lots Lot[]
 }
 
@@ -822,6 +824,7 @@ model Inventory {
   @@index([reorderPoint, quantity])
   @@index([quantity])
   @@index([tenantId])
+  @@index([tenantId, updatedAt])
 }
 
 // NEW: Lot/Serial Tracking
@@ -936,6 +939,7 @@ model Customer {
   @@index([tenantId, loyaltyPoints])
   @@index([deletedAt])
   @@index([tenantId, createdAt])
+  @@index([tenantId, updatedAt])
   @@index([name])
 }
 
@@ -1160,6 +1164,7 @@ model Order {
   @@index([storeId, createdAt(sort: Desc)])
   @@index([tenantId])
   @@index([tenantId, createdAt])
+  @@index([tenantId, updatedAt])
   @@index([deletedAt])
   journalEntries JournalEntry[]
 }
